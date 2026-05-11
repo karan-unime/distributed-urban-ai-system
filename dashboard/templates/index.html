@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Urban Distributed System — Admin Panel</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f1117; color: #e0e0e0; font-family: 'Courier New', monospace; font-size: 13px; padding: 12px; }
+
+  /* ── Header ── */
+  .header { display: flex; justify-content: space-between; align-items: center;
+    background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 10px;
+    padding: 12px 20px; margin-bottom: 12px; }
+  .header-title { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: 1px; }
+  .header-right { display: flex; align-items: center; gap: 12px; font-size: 11px; }
+  .live-dot { width: 9px; height: 9px; border-radius: 50%; background: #22c55e;
+    animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  #clock { color: #4b5563; }
+
+  /* ── Alert bar ── */
+  #alert-bar { display: none; background: #450a0a; border: 1px solid #f87171;
+    border-radius: 8px; padding: 10px 16px; margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center; }
+  #alert-bar.hidden { display: none; }
+  .alert-title { color: #f87171; font-weight: 700; font-size: 13px; }
+  .alert-detail { color: #fca5a5; font-size: 11px; margin-top: 3px; }
+  #alert-level { color: #f87171; font-size: 20px; font-weight: 700; }
+
+  /* ── KPI row ── */
+  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 12px; }
+  .kpi { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 8px; padding: 12px 16px; }
+  .kpi-label { font-size: 10px; color: #4b5563; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .kpi-val { font-size: 24px; font-weight: 700; }
+  .kpi-sub { font-size: 10px; color: #4b5563; margin-top: 2px; }
+
+  /* ── Section title ── */
+  .sec { font-size: 10px; color: #4b5563; text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 6px; margin-top: 4px; }
+
+  /* ── 3-col grid for edge ── */
+  .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-bottom: 12px; }
+  .area-card { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 8px; padding: 14px; }
+  .area-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .area-name { font-weight: 700; color: #fff; font-size: 13px; }
+  .sev { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .sev-LOW      { background:#14532d; color:#22c55e; }
+  .sev-MEDIUM   { background:#713f12; color:#fbbf24; }
+  .sev-HIGH     { background:#7c2d12; color:#fb923c; }
+  .sev-CRITICAL { background:#450a0a; color:#f87171; }
+  .mrow { display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .mk { color: #4b5563; font-size: 11px; }
+  .mv { color: #e0e0e0; font-size: 11px; }
+  .bar-wrap { background: #0f1117; border-radius: 4px; height: 5px; margin: 5px 0 8px; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+  .decision-text { font-size: 12px; font-weight: 700; margin-top: 8px; padding-top: 8px; border-top: 1px solid #2a2d3a; }
+  .dec-normal   { color: #22c55e; }
+  .dec-reduce   { color: #fbbf24; }
+  .dec-close    { color: #f87171; }
+
+  /* ── 2-col grid for fog+cloud ── */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .panel { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 8px; padding: 14px; }
+  .panel-title { font-size: 11px; color: #4b5563; text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 10px; border-bottom: 1px solid #2a2d3a; padding-bottom: 6px; }
+
+  /* ── Log ── */
+  .log-panel { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 8px; padding: 14px; }
+  .log-scroll { max-height: 220px; overflow-y: auto; }
+  .log-line { display: flex; gap: 10px; padding: 4px 0;
+    border-bottom: 1px solid #1e2130; font-size: 11px; color: #6b7280; }
+  .log-time { color: #374151; flex-shrink: 0; width: 55px; }
+  .log-tag  { flex-shrink: 0; width: 45px; font-weight: 700; }
+  .tag-EDGE  { color: #60a5fa; }
+  .tag-FOG   { color: #a78bfa; }
+  .tag-CLOUD { color: #34d399; }
+  .log-normal   { color: #6b7280; }
+  .log-medium   { color: #fbbf24; }
+  .log-high     { color: #fb923c; }
+  .log-critical { color: #f87171; }
+
+  /* ── Colors by policy ── */
+  .pol-NORMAL    { color: #22c55e; }
+  .pol-ALERT     { color: #fbbf24; }
+  .pol-EMERGENCY { color: #f87171; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-title">🏙 URBAN DISTRIBUTED SYSTEM — ADMIN PANEL</div>
+  <div class="header-right">
+    <div class="live-dot"></div>
+    <span style="color:#22c55e">LIVE</span>
+    <span id="clock">--:--:--</span>
+  </div>
+</div>
+
+<!-- Alert bar (shown only on hotspot) -->
+<div id="alert-bar" class="hidden">
+  <div>
+    <div class="alert-title" id="alert-title">⚠ HOTSPOT DETECTED — FOG LAYER</div>
+    <div class="alert-detail" id="alert-detail">—</div>
+  </div>
+  <div id="alert-level">—</div>
+</div>
+
+<!-- KPIs -->
+<div class="kpi-row">
+  <div class="kpi">
+    <div class="kpi-label">Cloud Policy</div>
+    <div class="kpi-val pol-NORMAL" id="kpi-policy">NORMAL</div>
+    <div class="kpi-sub" id="kpi-policy-time">—</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Avg PM2.5 (District)</div>
+    <div class="kpi-val" id="kpi-pm25" style="color:#fbbf24">0.0</div>
+    <div class="kpi-sub">µg/m³</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Hotspots Detected</div>
+    <div class="kpi-val" id="kpi-hotspots" style="color:#fb923c">0</div>
+    <div class="kpi-sub">this session</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">Total Decisions</div>
+    <div class="kpi-val" id="kpi-total" style="color:#60a5fa">0</div>
+    <div class="kpi-sub" id="kpi-breakdown">—</div>
+  </div>
+</div>
+
+<!-- Edge layer -->
+<div class="sec">EDGE LAYER — 3 AREAS</div>
+<div class="grid3">
+  <div class="area-card" id="card-Area1">
+    <div class="area-header">
+      <div class="area-name">Area 1</div>
+      <span class="sev sev-LOW" id="sev-Area1">LOW</span>
+    </div>
+    <div class="mrow"><span class="mk">PM2.5</span><span class="mv" id="pm25-Area1">0</span></div>
+    <div class="bar-wrap"><div class="bar-fill" id="bar-Area1" style="width:0%;background:#22c55e"></div></div>
+    <div class="mrow"><span class="mk">Visibility</span><span class="mv" id="vis-Area1">—</span></div>
+    <div class="mrow"><span class="mk">NOx</span><span class="mv" id="nox-Area1">—</span></div>
+    <div class="mrow"><span class="mk">Traffic</span><span class="mv" id="trf-Area1">—</span></div>
+    <div class="decision-text dec-normal" id="dec-Area1">—</div>
+  </div>
+  <div class="area-card" id="card-Area2">
+    <div class="area-header">
+      <div class="area-name">Area 2</div>
+      <span class="sev sev-LOW" id="sev-Area2">LOW</span>
+    </div>
+    <div class="mrow"><span class="mk">PM2.5</span><span class="mv" id="pm25-Area2">0</span></div>
+    <div class="bar-wrap"><div class="bar-fill" id="bar-Area2" style="width:0%;background:#22c55e"></div></div>
+    <div class="mrow"><span class="mk">Visibility</span><span class="mv" id="vis-Area2">—</span></div>
+    <div class="mrow"><span class="mk">NOx</span><span class="mv" id="nox-Area2">—</span></div>
+    <div class="mrow"><span class="mk">Traffic</span><span class="mv" id="trf-Area2">—</span></div>
+    <div class="decision-text dec-normal" id="dec-Area2">—</div>
+  </div>
+  <div class="area-card" id="card-Area3">
+    <div class="area-header">
+      <div class="area-name">Area 3</div>
+      <span class="sev sev-LOW" id="sev-Area3">LOW</span>
+    </div>
+    <div class="mrow"><span class="mk">PM2.5</span><span class="mv" id="pm25-Area3">0</span></div>
+    <div class="bar-wrap"><div class="bar-fill" id="bar-Area3" style="width:0%;background:#22c55e"></div></div>
+    <div class="mrow"><span class="mk">Visibility</span><span class="mv" id="vis-Area3">—</span></div>
+    <div class="mrow"><span class="mk">NOx</span><span class="mv" id="nox-Area3">—</span></div>
+    <div class="mrow"><span class="mk">Traffic</span><span class="mv" id="trf-Area3">—</span></div>
+    <div class="decision-text dec-normal" id="dec-Area3">—</div>
+  </div>
+</div>
+
+<!-- Fog + Cloud panels -->
+<div class="grid2">
+  <div class="panel">
+    <div class="panel-title">🌫 FOG LAYER — COORDINATOR</div>
+    <div class="mrow"><span class="mk">Status</span><span class="mv" style="color:#a78bfa">Active</span></div>
+    <div class="mrow"><span class="mk">Hotspot Level</span><span class="mv" id="fog-hotspot-level">NONE</span></div>
+    <div class="mrow"><span class="mk">Command</span><span class="mv" id="fog-command">NORMAL</span></div>
+    <div class="mrow"><span class="mk">Avg PM2.5</span><span class="mv" id="fog-avg-pm25">0.0 µg/m³</span></div>
+    <div class="mrow"><span class="mk">Avg NOx</span><span class="mv" id="fog-avg-nox">0.0</span></div>
+    <div class="mrow"><span class="mk">Affected Areas</span><span class="mv" id="fog-affected">—</span></div>
+    <div class="mrow"><span class="mk">Last Update</span><span class="mv" id="fog-updated">—</span></div>
+  </div>
+  <div class="panel">
+    <div class="panel-title">☁ CLOUD LAYER — ORCHESTRATOR</div>
+    <div class="mrow"><span class="mk">Policy</span><span class="mv pol-NORMAL" id="cloud-policy">NORMAL</span></div>
+    <div class="mrow"><span class="mk">PM2.5 Limit</span><span class="mv" id="cloud-limit">75.0 µg/m³</span></div>
+    <div class="mrow"><span class="mk">Total Messages</span><span class="mv" id="cloud-total">0</span></div>
+    <div class="mrow"><span class="mk">Reduce Traffic</span><span class="mv" style="color:#fbbf24" id="cloud-reduces">0</span></div>
+    <div class="mrow"><span class="mk">Normal Traffic</span><span class="mv" style="color:#22c55e" id="cloud-normals">0</span></div>
+    <div class="mrow"><span class="mk">Road Closures</span><span class="mv" style="color:#f87171" id="cloud-closures">0</span></div>
+    <div class="mrow"><span class="mk">Hotspots</span><span class="mv" style="color:#fb923c" id="cloud-hotspots">0</span></div>
+  </div>
+</div>
+
+<!-- Live log -->
+<div class="log-panel">
+  <div class="panel-title">📋 LIVE EVENT LOG — ALL LAYERS</div>
+  <div class="log-scroll" id="log-container">
+    <div class="log-line"><span class="log-time">--:--:--</span><span class="log-tag">—</span><span>Waiting for data...</span></div>
+  </div>
+</div>
+
+<script>
+  // Clock
+  setInterval(() => {
+    document.getElementById("clock").textContent =
+      new Date().toLocaleTimeString("en-GB");
+  }, 1000);
+
+  // ── Severity helpers ───────────────────────────────────
+  function sevColor(sev) {
+    if (sev === "CRITICAL") return "#f87171";
+    if (sev === "HIGH")     return "#fb923c";
+    if (sev === "MEDIUM")   return "#fbbf24";
+    return "#22c55e";
+  }
+
+  function barPct(pm25) {
+    return Math.min(100, (pm25 / 300) * 100).toFixed(1);
+  }
+
+  function decClass(decision) {
+    if (decision === "Close road")      return "dec-close";
+    if (decision === "Reduce traffic")  return "dec-reduce";
+    return "dec-normal";
+  }
+
+  function polClass(policy) {
+    if (policy === "EMERGENCY") return "pol-EMERGENCY";
+    if (policy === "ALERT")     return "pol-ALERT";
+    return "pol-NORMAL";
+  }
+
+  // ── Update dashboard with new state ───────────────────
+  function updateDashboard(data) {
+    const s = data.state;
+    const logs = data.event_log;
+
+    // ── KPIs ──
+    const policyEl = document.getElementById("kpi-policy");
+    policyEl.textContent = s.cloud_policy;
+    policyEl.className = "kpi-val " + polClass(s.cloud_policy);
+    document.getElementById("kpi-policy-time").textContent =
+      "Updated " + s.cloud_updated;
+    document.getElementById("kpi-pm25").textContent =
+      s.fog_avg_pm25.toFixed(1);
+    document.getElementById("kpi-hotspots").textContent =
+      s.cloud_hotspots;
+    document.getElementById("kpi-total").textContent =
+      s.cloud_total_msg;
+    document.getElementById("kpi-breakdown").textContent =
+      `↓${s.cloud_reduces} reduce | ↑${s.cloud_normals} normal`;
+
+    // ── Alert bar ──
+    const alertBar = document.getElementById("alert-bar");
+    if (s.fog_hotspot) {
+      alertBar.classList.remove("hidden");
+      document.getElementById("alert-title").textContent =
+        `⚠ ${s.fog_hotspot_level} HOTSPOT DETECTED — FOG LAYER`;
+      document.getElementById("alert-detail").textContent =
+        `Areas: ${s.fog_affected_areas.join(", ")} | ` +
+        `Avg PM2.5: ${s.fog_avg_pm25} µg/m³ | ` +
+        `Command: ${s.fog_command}`;
+      document.getElementById("alert-level").textContent =
+        s.fog_hotspot_level;
+    } else {
+      alertBar.classList.add("hidden");
+    }
+
+    // ── Edge area cards ──
+    ["Area1", "Area2", "Area3"].forEach(area => {
+      const a = s.areas[area];
+      document.getElementById(`pm25-${area}`).textContent =
+        a.pm25.toFixed(1) + " µg/m³";
+      document.getElementById(`vis-${area}`).textContent =
+        a.visibility + " km";
+      document.getElementById(`nox-${area}`).textContent =
+        a.nox.toFixed(1);
+      document.getElementById(`trf-${area}`).textContent =
+        a.traffic;
+
+      const sevEl = document.getElementById(`sev-${area}`);
+      sevEl.textContent = a.severity;
+      sevEl.className   = "sev sev-" + a.severity;
+
+      const bar = document.getElementById(`bar-${area}`);
+      bar.style.width      = barPct(a.pm25) + "%";
+      bar.style.background = sevColor(a.severity);
+
+      const decEl = document.getElementById(`dec-${area}`);
+      decEl.textContent = "→ " + a.decision;
+      decEl.className   = "decision-text " + decClass(a.decision);
+    });
+
+    // ── Fog panel ──
+    const fogLvl = document.getElementById("fog-hotspot-level");
+    fogLvl.textContent = s.fog_hotspot_level;
+    fogLvl.style.color = s.fog_hotspot ? sevColor(s.fog_hotspot_level) : "#6b7280";
+    document.getElementById("fog-command").textContent  = s.fog_command;
+    document.getElementById("fog-avg-pm25").textContent = s.fog_avg_pm25.toFixed(1) + " µg/m³";
+    document.getElementById("fog-avg-nox").textContent  = s.fog_avg_nox.toFixed(1);
+    document.getElementById("fog-affected").textContent =
+      s.fog_affected_areas.length ? s.fog_affected_areas.join(", ") : "None";
+    document.getElementById("fog-updated").textContent  = s.fog_updated;
+
+    // ── Cloud panel ──
+    const cpEl = document.getElementById("cloud-policy");
+    cpEl.textContent = s.cloud_policy;
+    cpEl.className   = "mv " + polClass(s.cloud_policy);
+    document.getElementById("cloud-limit").textContent   = s.cloud_pm25_limit + " µg/m³";
+    document.getElementById("cloud-total").textContent   = s.cloud_total_msg;
+    document.getElementById("cloud-reduces").textContent = s.cloud_reduces;
+    document.getElementById("cloud-normals").textContent = s.cloud_normals;
+    document.getElementById("cloud-closures").textContent= s.cloud_emergencies;
+    document.getElementById("cloud-hotspots").textContent= s.cloud_hotspots;
+
+    // ── Event log ──
+    const container = document.getElementById("log-container");
+    container.innerHTML = logs.map(e => `
+      <div class="log-line">
+        <span class="log-time">${e.time}</span>
+        <span class="log-tag tag-${e.layer}">[${e.layer}]</span>
+        <span class="log-${e.level}">${e.msg}</span>
+      </div>
+    `).join("");
+  }
+
+  // ── Socket.IO connection ───────────────────────────────
+  const socket = io();
+
+  socket.on("connect", () => {
+    console.log("Dashboard connected to server");
+  });
+
+  socket.on("update", (data) => {
+    updateDashboard(data);
+  });
+
+  // Load initial state on page open
+  fetch("/api/state")
+    .then(r => r.json())
+    .then(data => updateDashboard(data));
+</script>
+</body>
+</html>

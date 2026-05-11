@@ -1,0 +1,78 @@
+version: "3.8"
+
+# ============================================================
+# docker-compose.yml
+#
+# Starts 6 containers in correct order:
+#
+#   1. mqtt          — MQTT broker (Mosquitto)
+#   2. edge          — Edge layer  (all 3 areas in one container)
+#   3. fog           — Fog layer   (district coordinator)
+#   4. cloud         — Cloud layer (global orchestrator)
+#   5. sensor        — Sensor      (sends data last)
+#
+# Run with:
+#   docker-compose up --build
+#
+# Stop with:
+#   docker-compose down
+# ============================================================
+
+services:
+
+  # ── 1. MQTT Broker ────────────────────────────────────────
+  mqtt:
+    image: eclipse-mosquitto
+    container_name: mqtt_broker
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    restart: unless-stopped
+
+  # ── 2. Edge Layer ─────────────────────────────────────────
+  edge:
+    build: ./Edge
+    container_name: edge_agent
+    depends_on:
+      - mqtt
+    restart: unless-stopped
+
+  # ── 3. Fog Layer ──────────────────────────────────────────
+  fog:
+    build: ./fog
+    container_name: fog_coordinator
+    depends_on:
+      - mqtt
+      - edge
+    restart: unless-stopped
+
+  # ── 4. Cloud Layer ────────────────────────────────────────
+  cloud:
+    build: ./cloud
+    container_name: cloud_orchestrator
+    depends_on:
+      - mqtt
+      - fog
+    restart: unless-stopped
+
+  # ── 5. Sensor ─────────────────────────────────────────────
+  sensor:
+    build: ./sensor
+    container_name: sensor_node
+    depends_on:
+      - mqtt
+      - edge
+      - fog
+      - cloud
+    restart: unless-stopped
+
+  # ── 6. Admin Dashboard ────────────────────────────────────
+  dashboard:
+    build: ./dashboard
+    container_name: admin_dashboard
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mqtt
+    restart: unless-stopped
