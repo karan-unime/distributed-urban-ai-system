@@ -4,71 +4,107 @@ import time
 import random
 
 # ============================================================
-# sensor.py  —  SENSOR LAYER
-#
-# ⏱ UPDATE INTERVAL: change SEND_INTERVAL below (seconds)
-#    SEND_INTERVAL = 1   → updates every 1 second
-#    SEND_INTERVAL = 2   → updates every 2 seconds
-#    SEND_INTERVAL = 3   → updates every 3 seconds
+# sensor.py — SENSOR LAYER
+# Areas: Industrial Zone / Residential Zone / Green Park
+# Each area is fully independent with its own profile
+# ⏱ Change SEND_INTERVAL to adjust update speed
 # ============================================================
 
 BROKER        = "mqtt"
 PORT          = 1883
 PUB_TOPIC     = "city/all"
-SEND_INTERVAL = 5          # ← CHANGE THIS to adjust update speed
+SEND_INTERVAL = 1
 
-# ── Scenario sets — all 3 areas sent together each cycle ─────
-# Each ROUND contains data for ALL 3 areas at the same time
-# The sensor cycles through rounds: Normal → Moderate → High → Critical → Recovery
+AREA_PROFILES = {
+    "Industrial Zone": {
+        "base_pm25"   : 95.0,
+        "spike_chance": 0.30,
+        "recovery"    : 0.15,
+        "base_vis"    : 4.0,
+        "base_nox"    : 85.0,
+        "base_traffic": 75,
+    },
+    "Residential Zone": {
+        "base_pm25"   : 35.0,
+        "spike_chance": 0.15,
+        "recovery"    : 0.3,
+        "base_vis"    : 8.0,
+        "base_nox"    : 20.0,
+        "base_traffic": 50,
+    },
+    "Green Park": {
+        "base_pm25"   : 12.0,
+        "spike_chance": 0.05,
+        "recovery"    : 0.6,
+        "base_vis"    : 12.0,
+        "base_nox"    : 5.0,
+        "base_traffic": 20,
+    },
+}
 
-ROUNDS = [
-    # Round 1 — Normal conditions
-    [
-        {"district": "Area1", "pm25": 12.0,  "visibility": 10.0, "traffic": 30, "nox": 5.0,   "condition": "Clear"},
-        {"district": "Area2", "pm25": 18.0,  "visibility": 9.0,  "traffic": 40, "nox": 8.0,   "condition": "Partly cloudy"},
-        {"district": "Area3", "pm25": 22.0,  "visibility": 8.0,  "traffic": 35, "nox": 10.0,  "condition": "Sunny"},
-    ],
-    # Round 2 — Moderate pollution
-    [
-        {"district": "Area1", "pm25": 45.0,  "visibility": 6.0,  "traffic": 55, "nox": 25.0,  "condition": "Hazy"},
-        {"district": "Area2", "pm25": 60.0,  "visibility": 5.0,  "traffic": 65, "nox": 35.0,  "condition": "Hazy"},
-        {"district": "Area3", "pm25": 55.0,  "visibility": 7.0,  "traffic": 60, "nox": 30.0,  "condition": "Overcast"},
-    ],
-    # Round 3 — High pollution
-    [
-        {"district": "Area1", "pm25": 90.0,  "visibility": 4.0,  "traffic": 75, "nox": 55.0,  "condition": "Fog"},
-        {"district": "Area2", "pm25": 110.0, "visibility": 3.0,  "traffic": 80, "nox": 70.0,  "condition": "Fog"},
-        {"district": "Area3", "pm25": 130.0, "visibility": 2.5,  "traffic": 85, "nox": 80.0,  "condition": "Heavy fog"},
-    ],
-    # Round 4 — Critical
-    [
-        {"district": "Area1", "pm25": 180.0, "visibility": 1.5,  "traffic": 90, "nox": 110.0, "condition": "Dense fog"},
-        {"district": "Area2", "pm25": 200.0, "visibility": 1.0,  "traffic": 95, "nox": 130.0, "condition": "Dense fog"},
-        {"district": "Area3", "pm25": 250.0, "visibility": 0.5,  "traffic": 98, "nox": 150.0, "condition": "Smog"},
-    ],
-    # Round 5 — Recovery
-    [
-        {"district": "Area1", "pm25": 70.0,  "visibility": 5.5,  "traffic": 60, "nox": 40.0,  "condition": "Improving"},
-        {"district": "Area2", "pm25": 50.0,  "visibility": 7.0,  "traffic": 50, "nox": 28.0,  "condition": "Improving"},
-        {"district": "Area3", "pm25": 30.0,  "visibility": 8.5,  "traffic": 40, "nox": 15.0,  "condition": "Clearing"},
-    ],
-]
+area_state = {
+    "Industrial Zone":  {"pm25": 95.0,  "nox": 85.0, "visibility": 4.0,  "traffic": 75, "spiking": False},
+    "Residential Zone": {"pm25": 35.0,  "nox": 20.0, "visibility": 8.0,  "traffic": 50, "spiking": False},
+    "Green Park":       {"pm25": 12.0,  "nox": 5.0,  "visibility": 12.0, "traffic": 20, "spiking": False},
+}
 
-# ── Add small random noise ────────────────────────────────────
-def add_noise(value, pct=0.05):
-    noise = value * pct * random.uniform(-1, 1)
-    return round(value + noise, 2)
+def get_time_factor():
+    hour = time.localtime().tm_hour
+    if 7 <= hour <= 9:    return 1.5
+    elif 17 <= hour <= 19: return 1.6
+    elif 22 <= hour or hour <= 5: return 0.5
+    else: return 1.0
 
-# ── MQTT callbacks ────────────────────────────────────────────
+def add_noise(value, pct=0.08):
+    return round(value * (1 + pct * random.uniform(-1, 1)), 2)
+
+def update_area(area_name):
+    profile = AREA_PROFILES[area_name]
+    state   = area_state[area_name]
+    time_f  = get_time_factor()
+
+    if not state["spiking"]:
+        if random.random() < profile["spike_chance"]:
+            state["spiking"]    = True
+            spike_mult          = random.uniform(2.0, 4.5)
+            state["pm25"]       = profile["base_pm25"] * spike_mult * time_f
+            state["nox"]        = profile["base_nox"]  * spike_mult * time_f
+            state["visibility"] = max(0.3, profile["base_vis"] - random.uniform(2, 6))
+            state["traffic"]    = min(100, int(profile["base_traffic"] * 1.3))
+        else:
+            state["pm25"]       = add_noise(profile["base_pm25"] * time_f * random.uniform(0.8, 1.2))
+            state["nox"]        = add_noise(profile["base_nox"]  * time_f * random.uniform(0.8, 1.2))
+            state["visibility"] = add_noise(profile["base_vis"]  * random.uniform(0.9, 1.1))
+            state["traffic"]    = int(add_noise(profile["base_traffic"] * time_f))
+    else:
+        state["pm25"]       = round(state["pm25"]       * (1 - profile["recovery"] * random.uniform(0.1, 0.3)), 2)
+        state["nox"]        = round(state["nox"]        * (1 - profile["recovery"] * random.uniform(0.1, 0.3)), 2)
+        state["visibility"] = round(min(profile["base_vis"], state["visibility"] + random.uniform(0.1, 0.5)), 2)
+        state["traffic"]    = max(profile["base_traffic"], state["traffic"] - random.randint(2, 8))
+        if state["pm25"] <= profile["base_pm25"] * 1.2:
+            state["spiking"] = False
+
+    state["pm25"]       = max(1.0,  min(400.0, state["pm25"]))
+    state["nox"]        = max(0.5,  min(300.0, state["nox"]))
+    state["visibility"] = max(0.1,  min(15.0,  state["visibility"]))
+    state["traffic"]    = max(5,    min(100,   state["traffic"]))
+
+    return {
+        "district"  : area_name,
+        "pm25"      : round(state["pm25"], 2),
+        "visibility": round(state["visibility"], 2),
+        "traffic"   : state["traffic"],
+        "nox"       : round(state["nox"], 2),
+        "spiking"   : state["spiking"]
+    }
+
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
-        print("[SENSOR] Connected to MQTT broker ✅")
-        print(f"[SENSOR] Sending ALL 3 areas every {SEND_INTERVAL}s\n")
-    else:
-        print(f"[SENSOR] Connection failed: {reason_code}")
+        print("[SENSOR] Connected ✅")
+        print(f"[SENSOR] Areas: {list(AREA_PROFILES.keys())}")
+        print(f"[SENSOR] Update interval: {SEND_INTERVAL}s\n")
 
-# ── MQTT setup ────────────────────────────────────────────────
-print("[SENSOR] Starting up...")
+print("[SENSOR] Starting...")
 time.sleep(5)
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
@@ -77,34 +113,19 @@ client.connect(BROKER, PORT, 60)
 client.loop_start()
 time.sleep(2)
 
-# ── Main loop ─────────────────────────────────────────────────
-print(f"[SENSOR] Live — update interval: {SEND_INTERVAL} second(s)\n")
-
 cycle = 0
 while True:
-    # Pick current round (cycles through all 5 rounds)
-    round_data = ROUNDS[cycle % len(ROUNDS)]
-
-    print(f"[SENSOR] ── Round {(cycle % len(ROUNDS)) + 1} ──────────────────────────")
-
-    # Send ALL 3 areas at the same time
-    for scenario in round_data:
-        payload = {
-            "district"  : scenario["district"],
-            "pm25"      : add_noise(scenario["pm25"]),
-            "visibility": add_noise(scenario["visibility"]),
-            "traffic"   : int(add_noise(scenario["traffic"])),
-            "nox"       : add_noise(scenario["nox"]),
-            "condition" : scenario["condition"]
-        }
-        client.publish(PUB_TOPIC, json.dumps(payload))
-        print(
-            f"[SENSOR] {payload['district']:6s} | "
-            f"PM2.5={payload['pm25']:6.1f} | "
-            f"Vis={payload['visibility']:4.1f}km | "
-            f"Traffic={payload['traffic']:3d} | "
-            f"NOx={payload['nox']:6.1f}"
-        )
-
     cycle += 1
-    time.sleep(SEND_INTERVAL)   # ← controlled by SEND_INTERVAL above
+    print(f"[SENSOR] ── Cycle {cycle} ──────────────────────────────")
+    for area_name in ["Industrial Zone", "Residential Zone", "Green Park"]:
+        data    = update_area(area_name)
+        spike_t = " 🔴 SPIKE" if data["spiking"] else ""
+        client.publish(PUB_TOPIC, json.dumps({
+            "district"  : data["district"],
+            "pm25"      : data["pm25"],
+            "visibility": data["visibility"],
+            "traffic"   : data["traffic"],
+            "nox"       : data["nox"],
+        }))
+        print(f"[SENSOR] {data['district']:18s} | PM2.5={data['pm25']:6.1f} | Vis={data['visibility']:4.1f}km | Traffic={data['traffic']:3d} | NOx={data['nox']:5.1f}{spike_t}")
+    time.sleep(SEND_INTERVAL)

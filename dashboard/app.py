@@ -14,6 +14,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 BROKER = "mqtt"
 PORT   = 1883
+AREAS  = ["Industrial Zone", "Residential Zone", "Green Park"]
 
 state = {
     "cloud_policy"      : "NORMAL",
@@ -31,20 +32,21 @@ state = {
     "fog_command"       : "NORMAL",
     "fog_affected_areas": [],
     "fog_updated"       : "—",
+    "start_time"        : datetime.now().strftime("%H:%M:%S"),
     "areas": {
-        "Area1": {"pm25": 0, "visibility": 10, "traffic": 0, "nox": 0, "severity": "LOW", "decision": "—"},
-        "Area2": {"pm25": 0, "visibility": 10, "traffic": 0, "nox": 0, "severity": "LOW", "decision": "—"},
-        "Area3": {"pm25": 0, "visibility": 10, "traffic": 0, "nox": 0, "severity": "LOW", "decision": "—"},
+        a: {"pm25":0,"visibility":10,"traffic":0,"nox":0,
+            "severity":"LOW","decision":"—","prev_pm25":0,"trend":"→"}
+        for a in AREAS
     }
 }
 
-event_log = deque(maxlen=50)
+event_log = deque(maxlen=80)
 
 def add_log(layer, message, level="normal"):
-    event_log.appendleft({"time": datetime.now().strftime("%H:%M:%S"), "layer": layer, "msg": message, "level": level})
+    event_log.appendleft({"time":datetime.now().strftime("%H:%M:%S"),"layer":layer,"msg":message,"level":level})
 
 def push_update():
-    socketio.emit("update", {"state": state, "event_log": list(event_log)})
+    socketio.emit("update", {"state":state,"event_log":list(event_log)})
 
 def on_message(client, userdata, msg):
     try:
@@ -53,20 +55,22 @@ def on_message(client, userdata, msg):
 
         if topic == "city/decisions":
             area     = payload.get("district")
+            if area not in AREAS: return
             decision = payload.get("decision", "—")
             severity = payload.get("severity", "LOW")
             pm25     = payload.get("pm25",      0)
             vis      = payload.get("visibility",10)
             traffic  = payload.get("traffic",   0)
             nox      = payload.get("nox",       0)
-            if area in state["areas"]:
-                state["areas"][area] = {"pm25": pm25, "visibility": vis, "traffic": traffic, "nox": nox, "severity": severity, "decision": decision}
-                state["cloud_total_msg"] += 1
-                if decision == "Reduce traffic":   state["cloud_reduces"]     += 1
-                elif decision == "Normal traffic": state["cloud_normals"]     += 1
-                elif decision == "Close road":     state["cloud_emergencies"] += 1
-                level = "critical" if severity=="CRITICAL" else "high" if severity=="HIGH" else "medium" if severity=="MEDIUM" else "normal"
-                add_log("EDGE", f"{area} | PM2.5={pm25} | {severity} → {decision}", level)
+            prev     = state["areas"][area]["pm25"]
+            trend    = "↑" if pm25 > prev + 1 else ("↓" if pm25 < prev - 1 else "→")
+            state["areas"][area] = {"pm25":pm25,"visibility":vis,"traffic":traffic,"nox":nox,"severity":severity,"decision":decision,"prev_pm25":prev,"trend":trend}
+            state["cloud_total_msg"] += 1
+            if decision == "Reduce traffic":   state["cloud_reduces"]     += 1
+            elif decision == "Normal traffic": state["cloud_normals"]     += 1
+            elif decision == "Close road":     state["cloud_emergencies"] += 1
+            level = "critical" if severity=="CRITICAL" else "high" if severity=="HIGH" else "medium" if severity=="MEDIUM" else "normal"
+            add_log("EDGE", f"{area} | PM2.5={pm25} {trend} | {severity} → {decision}", level)
 
         elif topic == "city/fog/summary":
             state["fog_hotspot"]        = payload.get("hotspot",       False)
@@ -79,7 +83,7 @@ def on_message(client, userdata, msg):
             if state["fog_hotspot"]:
                 state["cloud_hotspots"] += 1
                 level = "critical" if state["fog_hotspot_level"]=="CRITICAL" else "high"
-                add_log("FOG", f"⚠ HOTSPOT {state['fog_hotspot_level']} | Areas:{state['fog_affected_areas']} | PM2.5={state['fog_avg_pm25']} | CMD:{state['fog_command']}", level)
+                add_log("FOG", f"⚠ HOTSPOT {state['fog_hotspot_level']} | Zones:{state['fog_affected_areas']} | PM2.5={state['fog_avg_pm25']} | CMD:{state['fog_command']}", level)
             else:
                 add_log("FOG", f"District OK | Avg PM2.5={state['fog_avg_pm25']} | Avg NOx={state['fog_avg_nox']}", "normal")
 
@@ -92,27 +96,24 @@ def on_message(client, userdata, msg):
                 "critical" if state["cloud_policy"]=="EMERGENCY" else "high" if state["cloud_policy"]=="ALERT" else "normal")
 
         push_update()
-
     except Exception as e:
         print(f"[DASHBOARD] Error: {e}")
 
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
-        print("[DASHBOARD] Connected to MQTT ✅")
+        print("[DASHBOARD] Connected ✅")
         client.subscribe("city/decisions")
         client.subscribe("city/fog/summary")
         client.subscribe("city/cloud/policy")
-    else:
-        print(f"[DASHBOARD] MQTT failed: {reason_code}")
 
 def start_mqtt():
     import time
     time.sleep(4)
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-    client.on_connect = on_connect
-    client.on_message = on_message
-    client.connect(BROKER, PORT, 60)
-    client.loop_forever()
+    c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+    c.on_connect = on_connect
+    c.on_message = on_message
+    c.connect(BROKER, PORT, 60)
+    c.loop_forever()
 
 eventlet.spawn(start_mqtt)
 
