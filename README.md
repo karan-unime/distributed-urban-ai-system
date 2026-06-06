@@ -190,8 +190,3 @@ python evaluate.py
 Title: Distributed Intelligent Traffic Control System Using Real-World Pollution Data and Multi-Agent AI
 
 Key concepts demonstrated: Cloud-Fog-Edge distributed computing, multi-agent autonomous systems, MQTT publish-subscribe communication, real-world dataset ML training, containerised microservices with Docker, and zero human intervention agentic loop.
-
-## Author
-
-Karan, Master's Student in Computer Science at the University of Messina.
-GitHub: [@karan-unime](https://github.com/karan-unime)
