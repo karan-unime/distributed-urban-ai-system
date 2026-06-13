@@ -33,9 +33,32 @@ state = {
     "fog_affected_areas": [],
     "fog_updated"       : "—",
     "start_time"        : datetime.now().strftime("%H:%M:%S"),
+
+    # NEW: resource plans from each layer
+    "fog_resource_allocations": {
+        a: {"bandwidth": 50, "compute_priority": "LOW",
+            "reporting_interval": 1, "sensors_active": 3}
+        for a in AREAS
+    },
+    "cloud_resource_plan": {
+        a: {"bandwidth": 100, "compute_priority": "LOW",
+            "sensor_interval": 1, "sensors_active": 3}
+        for a in AREAS
+    },
+
     "areas": {
-        a: {"pm25":0,"visibility":10,"traffic":0,"nox":0,
-            "severity":"LOW","decision":"—","prev_pm25":0,"trend":"→"}
+        a: {
+            "pm25": 0, "visibility": 10, "traffic": 0, "nox": 0,
+            "severity": "LOW", "decision": "—", "prev_pm25": 0, "trend": "→",
+            "city": "—", "country": "—", "condition": "—",
+            # NEW: per-area resource state
+            "resource_assignment": {
+                "sensors_active"    : 3,
+                "reporting_interval": 1,
+                "compute_priority"  : "LOW",
+                "bandwidth_limit"   : 50,
+            }
+        }
         for a in AREAS
     }
 }
@@ -43,10 +66,15 @@ state = {
 event_log = deque(maxlen=80)
 
 def add_log(layer, message, level="normal"):
-    event_log.appendleft({"time":datetime.now().strftime("%H:%M:%S"),"layer":layer,"msg":message,"level":level})
+    event_log.appendleft({
+        "time" : datetime.now().strftime("%H:%M:%S"),
+        "layer": layer,
+        "msg"  : message,
+        "level": level
+    })
 
 def push_update():
-    socketio.emit("update", {"state":state,"event_log":list(event_log)})
+    socketio.emit("update", {"state": state, "event_log": list(event_log)})
 
 def on_message(client, userdata, msg):
     try:
@@ -54,23 +82,50 @@ def on_message(client, userdata, msg):
         topic   = msg.topic
 
         if topic == "city/decisions":
-            area     = payload.get("district")
-            if area not in AREAS: return
-            decision = payload.get("decision", "—")
-            severity = payload.get("severity", "LOW")
-            pm25     = payload.get("pm25",      0)
-            vis      = payload.get("visibility",10)
-            traffic  = payload.get("traffic",   0)
-            nox      = payload.get("nox",       0)
-            prev     = state["areas"][area]["pm25"]
-            trend    = "↑" if pm25 > prev + 1 else ("↓" if pm25 < prev - 1 else "→")
-            state["areas"][area] = {"pm25":pm25,"visibility":vis,"traffic":traffic,"nox":nox,"severity":severity,"decision":decision,"prev_pm25":prev,"trend":trend}
+            area = payload.get("district")
+            if area not in AREAS:
+                return
+
+            decision  = payload.get("decision",  "—")
+            severity  = payload.get("severity",  "LOW")
+            pm25      = payload.get("pm25",       0)
+            vis       = payload.get("visibility", 10)
+            traffic   = payload.get("traffic",    0)
+            nox       = payload.get("nox",        0)
+            city      = payload.get("city",       "—")
+            country   = payload.get("country",    "—")
+            condition = payload.get("condition",  "—")
+            resources = payload.get("resource_assignment", {})
+
+            prev  = state["areas"][area]["pm25"]
+            trend = "↑" if pm25 > prev + 1 else ("↓" if pm25 < prev - 1 else "→")
+
+            state["areas"][area] = {
+                "pm25": pm25, "visibility": vis, "traffic": traffic, "nox": nox,
+                "severity": severity, "decision": decision,
+                "prev_pm25": prev, "trend": trend,
+                "city": city, "country": country, "condition": condition,
+                "resource_assignment": resources,   # NEW
+            }
             state["cloud_total_msg"] += 1
+
             if decision == "Reduce traffic":   state["cloud_reduces"]     += 1
             elif decision == "Normal traffic": state["cloud_normals"]     += 1
             elif decision == "Close road":     state["cloud_emergencies"] += 1
-            level = "critical" if severity=="CRITICAL" else "high" if severity=="HIGH" else "medium" if severity=="MEDIUM" else "normal"
-            add_log("EDGE", f"{area} | PM2.5={pm25} {trend} | {severity} → {decision}", level)
+
+            level = (
+                "critical" if severity == "CRITICAL" else
+                "high"     if severity == "HIGH"     else
+                "medium"   if severity == "MEDIUM"   else "normal"
+            )
+            add_log(
+                "EDGE",
+                f"{area} | {city}, {country} | PM2.5={pm25} {trend} | "
+                f"{severity} → {decision} | "
+                f"BW={resources.get('bandwidth_limit','?')}% "
+                f"CPU={resources.get('compute_priority','?')}",
+                level
+            )
 
         elif topic == "city/fog/summary":
             state["fog_hotspot"]        = payload.get("hotspot",       False)
@@ -78,24 +133,53 @@ def on_message(client, userdata, msg):
             state["fog_avg_pm25"]       = payload.get("avg_pm25",      0)
             state["fog_avg_nox"]        = payload.get("avg_nox",       0)
             state["fog_command"]        = payload.get("fog_command",   "NORMAL")
-            state["fog_affected_areas"] = payload.get("affected_areas",[])
+            state["fog_affected_areas"] = payload.get("affected_areas", [])
             state["fog_updated"]        = datetime.now().strftime("%H:%M:%S")
+
+            # NEW: store fog resource allocations
+            fog_alloc = payload.get("resource_allocations", {})
+            if fog_alloc:
+                state["fog_resource_allocations"] = fog_alloc
+
             if state["fog_hotspot"]:
                 state["cloud_hotspots"] += 1
-                level = "critical" if state["fog_hotspot_level"]=="CRITICAL" else "high"
-                add_log("FOG", f"⚠ HOTSPOT {state['fog_hotspot_level']} | Zones:{state['fog_affected_areas']} | PM2.5={state['fog_avg_pm25']} | CMD:{state['fog_command']}", level)
+                level = "critical" if state["fog_hotspot_level"] == "CRITICAL" else "high"
+                add_log(
+                    "FOG",
+                    f"⚠ HOTSPOT {state['fog_hotspot_level']} | "
+                    f"Zones:{state['fog_affected_areas']} | "
+                    f"PM2.5={state['fog_avg_pm25']} | CMD:{state['fog_command']}",
+                    level
+                )
             else:
-                add_log("FOG", f"District OK | Avg PM2.5={state['fog_avg_pm25']} | Avg NOx={state['fog_avg_nox']}", "normal")
+                add_log(
+                    "FOG",
+                    f"District OK | Avg PM2.5={state['fog_avg_pm25']} | "
+                    f"Avg NOx={state['fog_avg_nox']}",
+                    "normal"
+                )
 
         elif topic == "city/cloud/policy":
             old = state["cloud_policy"]
-            state["cloud_policy"]     = payload.get("policy",     "NORMAL")
-            state["cloud_pm25_limit"] = payload.get("pm25_limit", 75.0)
-            state["cloud_updated"]    = payload.get("updated_at", "—")
-            add_log("CLOUD", f"Policy: {old} → {state['cloud_policy']} | Limit={state['cloud_pm25_limit']}",
-                "critical" if state["cloud_policy"]=="EMERGENCY" else "high" if state["cloud_policy"]=="ALERT" else "normal")
+            state["cloud_policy"]     = payload.get("policy",      "NORMAL")
+            state["cloud_pm25_limit"] = payload.get("pm25_limit",  75.0)
+            state["cloud_updated"]    = payload.get("updated_at",  "—")
+
+            # NEW: store cloud resource plan
+            cloud_plan = payload.get("resource_plan", {})
+            if cloud_plan:
+                state["cloud_resource_plan"] = cloud_plan
+
+            add_log(
+                "CLOUD",
+                f"Policy: {old} → {state['cloud_policy']} | "
+                f"Limit={state['cloud_pm25_limit']}",
+                "critical" if state["cloud_policy"] == "EMERGENCY" else
+                "high"     if state["cloud_policy"] == "ALERT"     else "normal"
+            )
 
         push_update()
+
     except Exception as e:
         print(f"[DASHBOARD] Error: {e}")
 

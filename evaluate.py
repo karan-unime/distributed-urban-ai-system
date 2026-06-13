@@ -1,235 +1,287 @@
 import pandas as pd
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from datetime import datetime
+from collections import deque
 
 # ============================================================
-# evaluate.py  —  THESIS EVALUATION SCRIPT
+# evaluate.py — Full System Evaluation
 #
-# Compares two systems on the same dataset:
-#   BASELINE : fixed rules, no ML, no agents
-#   AGENTIC  : your full 3-layer ML system
-#
-# Produces a results table for your thesis
-# Run with: python evaluate.py
+# Evaluates:
+#   1. ML model accuracy (80/20 train/test split)
+#   2. Baseline vs Agentic system comparison
+#   3. NEW: Resource assignment effectiveness
+#      - How much bandwidth is saved in safe zones?
+#      - How many times were resources correctly escalated?
+#      - Learning: did threshold adaptation trigger?
 # ============================================================
 
-print("=" * 60)
+print("=" * 65)
 print("  THESIS EVALUATION — URBAN DISTRIBUTED AI SYSTEM")
-print("=" * 60)
+print("  With Resource Assignment & Coordination Metrics")
+print("=" * 65)
 print(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-print("=" * 60)
+print("=" * 65)
 
 # ── Load dataset ─────────────────────────────────────────────
 print("\n[1] Loading dataset...")
 df = pd.read_csv("Edge/processed_weather.csv")
-print(f"    Rows loaded: {len(df)}")
-print(f"    Columns: {list(df.columns)}")
+print(f"    Total rows: {len(df)}")
+print(f"    Action=1 (dangerous): {(df['action']==1).sum()} rows")
+print(f"    Action=0 (normal):    {(df['action']==0).sum()} rows")
 
-# Use a sample of 500 rows for fast evaluation
-SAMPLE = 500
-df_test = df.sample(n=SAMPLE, random_state=42).reset_index(drop=True)
-print(f"    Test sample: {SAMPLE} rows")
+# ── Train/Test Split ─────────────────────────────────────────
+print("\n[2] Splitting dataset — 80% train / 20% test...")
+X = df[["pm25", "visibility", "traffic", "nox"]]
+y = df["action"]
 
-# ── Train ML model (same as edge_agent.py) ───────────────────
-print("\n[2] Training Decision Tree model...")
-X_train = df[["pm25", "visibility", "traffic", "nox"]]
-y_train = df["action"]
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.20, random_state=42, stratify=y
+)
+
+print(f"    Training set : {len(X_train)} rows  ({len(X_train)/len(df)*100:.1f}%)")
+print(f"    Test set     : {len(X_test)} rows  ({len(X_test)/len(df)*100:.1f}%)")
+
+# ── Train model ───────────────────────────────────────────────
+print("\n[3] Training Decision Tree on TRAINING SET ONLY...")
 model = DecisionTreeClassifier(max_depth=5, random_state=42)
 model.fit(X_train, y_train)
-print("    Model trained ✅")
+print(f"    Tree depth: {model.get_depth()} levels ✅")
 
-# ── Severity classifier ───────────────────────────────────────
+# ── Evaluate on test set ──────────────────────────────────────
+print("\n[4] Evaluating on TEST SET (unseen data)...")
+y_pred     = model.predict(X_test)
+test_acc   = accuracy_score(y_test, y_pred)
+cm         = confusion_matrix(y_test, y_pred)
+tn, fp, fn, tp = cm.ravel()
+
+precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+recall    = tp / (tp + fn) if (tp + fn) > 0 else 0
+f1        = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+
+print(f"    Test accuracy : {test_acc*100:.2f}%")
+print(f"    Precision     : {precision*100:.2f}%")
+print(f"    Recall        : {recall*100:.2f}%")
+print(f"    F1 Score      : {f1*100:.2f}%")
+
+
+# ── Helpers ───────────────────────────────────────────────────
 def get_severity(pm25, visibility):
-    if pm25 > 150 or visibility < 2:   return "CRITICAL"
-    elif pm25 > 75 or visibility < 5:  return "HIGH"
-    elif pm25 > 35:                    return "MEDIUM"
-    else:                              return "LOW"
+    if pm25 > 150 or visibility < 2:  return "CRITICAL"
+    elif pm25 > 75 or visibility < 5: return "HIGH"
+    elif pm25 > 35:                   return "MEDIUM"
+    else:                             return "LOW"
 
-# ── BASELINE system ───────────────────────────────────────────
-# Fixed rules only — no ML, no agents, no fog coordination
-# Simulates a traditional fixed traffic light system
-
-print("\n[3] Running BASELINE system...")
-
-baseline_results = []
-for _, row in df_test.iterrows():
-    pm25       = row["pm25"]
-    visibility = row["visibility"]
-
-    # Baseline: only acts on extreme visibility (old approach)
-    # No PM2.5 awareness, no ML, no fog coordination
-    if visibility < 2:
-        decision = "Reduce traffic"
-        acted    = True
+def get_edge_resources(severity):
+    """Mirrors _adapt_resources() in edge_agent.py."""
+    if severity == "CRITICAL":
+        return {"sensors_active": 5, "reporting_interval": 0.5,
+                "compute_priority": "HIGH",   "bandwidth_limit": 100}
+    elif severity == "HIGH":
+        return {"sensors_active": 4, "reporting_interval": 1,
+                "compute_priority": "MEDIUM", "bandwidth_limit": 75}
+    elif severity == "MEDIUM":
+        return {"sensors_active": 3, "reporting_interval": 1,
+                "compute_priority": "LOW",    "bandwidth_limit": 50}
     else:
-        decision = "Normal traffic"
-        acted    = False
+        return {"sensors_active": 2, "reporting_interval": 2,
+                "compute_priority": "LOW",    "bandwidth_limit": 30}
 
-    baseline_results.append({
-        "pm25"          : pm25,
-        "visibility"    : visibility,
-        "decision"      : decision,
-        "acted"         : acted,
-        "response_time" : 0 if not acted else 30,  # fixed 30s delay
-        "severity"      : get_severity(pm25, visibility),
-    })
+def get_fog_resources(severity, is_affected):
+    """Mirrors _coordinate_resources() in fog_coordinator.py."""
+    if is_affected:
+        if severity == "CRITICAL":
+            return {"bandwidth": 60, "compute_priority": "HIGH",
+                    "reporting_interval": 0.5, "sensors_active": 5}
+        else:
+            return {"bandwidth": 50, "compute_priority": "MEDIUM",
+                    "reporting_interval": 1,   "sensors_active": 4}
+    else:
+        if severity == "CRITICAL":
+            return {"bandwidth": 15, "compute_priority": "LOW",
+                    "reporting_interval": 3,   "sensors_active": 2}
+        else:
+            return {"bandwidth": 25, "compute_priority": "LOW",
+                    "reporting_interval": 2,   "sensors_active": 3}
 
-baseline_df = pd.DataFrame(baseline_results)
 
-# ── AGENTIC system ────────────────────────────────────────────
-# Full ML model + severity + fog hotspot detection
+# ── Baseline system ───────────────────────────────────────────
+print("\n[5] Running BASELINE system on test set...")
+baseline_preds = []
+for _, row in X_test.iterrows():
+    if row["visibility"] < 2:
+        baseline_preds.append(1)
+    else:
+        baseline_preds.append(0)
 
-print("[4] Running AGENTIC system...")
+baseline_preds  = np.array(baseline_preds)
+base_acc        = accuracy_score(y_test, baseline_preds)
+base_cm         = confusion_matrix(y_test, baseline_preds)
+base_tn, base_fp, base_fn, base_tp = base_cm.ravel()
+base_precision  = base_tp/(base_tp+base_fp) if (base_tp+base_fp)>0 else 0
+base_recall     = base_tp/(base_tp+base_fn) if (base_tp+base_fn)>0 else 0
+base_f1         = 2*base_precision*base_recall/(base_precision+base_recall) if (base_precision+base_recall)>0 else 0
 
-agentic_results  = []
-district_state   = {"Area1": None, "Area2": None, "Area3": None}
-areas            = list(district_state.keys())
-hotspots_caught  = 0
 
-for i, row in df_test.iterrows():
-    pm25       = row["pm25"]
-    visibility = row["visibility"]
-    traffic    = row["traffic"]
-    nox        = row["nox"]
+# ── Agentic + Resource simulation ────────────────────────────
+print("[6] Running AGENTIC system with resource simulation on test set...")
 
-    # ML prediction
-    pred = model.predict(
-        pd.DataFrame([[pm25, visibility, traffic, nox]],
-                     columns=["pm25","visibility","traffic","nox"])
-    )[0]
+agent_reduces     = 0
+agent_closes      = 0
+hotspot_sim       = 0
 
-    severity = get_severity(pm25, visibility)
+# Resource tracking (NEW)
+bw_escalations        = 0   # times bandwidth was increased for a zone
+bw_reductions         = 0   # times bandwidth was reduced (freeing for others)
+compute_escalations   = 0   # times compute_priority became MEDIUM or HIGH
+correct_escalations   = 0   # escalation where severity was truly HIGH/CRITICAL
+total_bw_saved        = 0   # bandwidth units saved vs always-on baseline
 
+# Learning simulation (NEW)
+learning_triggers     = 0
+memory                = deque(maxlen=10)
+action_outcomes       = deque(maxlen=20)
+base_threshold        = 75.0
+prev_pm25             = 0.0
+
+# Simulate rows as if streaming through 3-zone system
+district_buf = []
+
+for i, (_, row) in enumerate(X_test.iterrows()):
+    pred = int(y_pred[i])
+    sev  = get_severity(row["pm25"], row["visibility"])
+    resources = get_edge_resources(sev)
+
+    # Count actions
     if pred == 1:
-        if severity == "CRITICAL": decision = "Close road"
-        else:                      decision = "Reduce traffic"
-    else:
-        decision = "Normal traffic"
+        if sev == "CRITICAL": agent_closes  += 1
+        else:                 agent_reduces += 1
 
-    # Simulate fog layer hotspot detection
-    area = areas[i % 3]
-    district_state[area] = severity
+    # Resource escalation tracking
+    if resources["bandwidth_limit"] > 50:
+        bw_escalations += 1
+        if sev in ["HIGH", "CRITICAL"]:
+            correct_escalations += 1
+    elif resources["bandwidth_limit"] < 50:
+        bw_reductions += 1
+        total_bw_saved += (50 - resources["bandwidth_limit"])
 
-    danger = sum(1 for s in district_state.values()
-                 if s in ["HIGH","CRITICAL"] and s is not None)
-    hotspot = danger >= 2
-    if hotspot:
-        hotspots_caught += 1
+    if resources["compute_priority"] in ["MEDIUM", "HIGH"]:
+        compute_escalations += 1
 
-    # Response time: agentic reacts in 1s vs baseline 30s
-    response_time = 1 if pred == 1 else 0
+    # Fog hotspot simulation
+    district_buf.append(sev)
+    if len(district_buf) == 3:
+        danger = sum(1 for s in district_buf if s in ["HIGH", "CRITICAL"])
+        if danger >= 2:
+            hotspot_sim += 1
+        district_buf = []
 
-    agentic_results.append({
-        "pm25"          : pm25,
-        "visibility"    : visibility,
-        "decision"      : decision,
-        "acted"         : pred == 1,
-        "response_time" : response_time,
-        "severity"      : severity,
-        "hotspot"       : hotspot,
-    })
+    # Learning simulation
+    memory.append(row["pm25"])
+    if prev_pm25 > 0:
+        improved = row["pm25"] < prev_pm25
+        decision_str = "Reduce traffic" if pred == 1 else "Normal traffic"
+        action_outcomes.append({"decision": decision_str, "improved": improved})
 
-agentic_df = pd.DataFrame(agentic_results)
+        recent = list(action_outcomes)[-5:]
+        reduce_ineffective = sum(
+            1 for o in recent
+            if o["decision"] == "Reduce traffic" and not o["improved"]
+        )
+        if reduce_ineffective >= 3:
+            old_thresh = base_threshold
+            base_threshold = max(50.0, base_threshold - 5.0)
+            if base_threshold != old_thresh:
+                learning_triggers += 1
 
-# ── Compute metrics ───────────────────────────────────────────
-print("\n[5] Computing metrics...")
+    prev_pm25 = row["pm25"]
 
-# Dangerous rows = where action was actually needed
-dangerous = df_test[
-    (df_test["pm25"] > 75) |
-    (df_test["visibility"] < 5)
-]
-dangerous_count = len(dangerous)
+dangerous_count = int(y_test.sum())
+b_detected      = int(base_tp)
+a_detected      = int(tp)
+escalation_acc  = correct_escalations / bw_escalations * 100 if bw_escalations > 0 else 0
 
-# Baseline metrics
-b_acted          = baseline_df["acted"].sum()
-b_missed         = dangerous_count - b_acted
-b_missed         = max(0, b_missed)
-b_avg_response   = baseline_df[baseline_df["acted"]]["response_time"].mean()
-b_avg_response   = b_avg_response if not np.isnan(b_avg_response) else 0
-b_reduces        = (baseline_df["decision"] == "Reduce traffic").sum()
-b_normals        = (baseline_df["decision"] == "Normal traffic").sum()
-b_closures       = 0  # baseline never closes roads
-
-# Agentic metrics
-a_acted          = agentic_df["acted"].sum()
-a_missed         = dangerous_count - a_acted
-a_missed         = max(0, a_missed)
-a_avg_response   = agentic_df[agentic_df["acted"]]["response_time"].mean()
-a_avg_response   = a_avg_response if not np.isnan(a_avg_response) else 0
-a_reduces        = (agentic_df["decision"] == "Reduce traffic").sum()
-a_normals        = (agentic_df["decision"] == "Normal traffic").sum()
-a_closures       = (agentic_df["decision"] == "Close road").sum()
-
-# PM2.5 exposure reduction (weighted by decision)
-b_pm25_exposure  = df_test.loc[~baseline_df["acted"], "pm25"].mean()
-a_pm25_exposure  = df_test.loc[~agentic_df["acted"],  "pm25"].mean()
-pm25_reduction   = ((b_pm25_exposure - a_pm25_exposure) / b_pm25_exposure * 100
-                    if b_pm25_exposure > 0 else 0)
-
-# Accuracy on dangerous cases
-b_accuracy = (b_acted / dangerous_count * 100) if dangerous_count > 0 else 0
-a_accuracy = (a_acted / dangerous_count * 100) if dangerous_count > 0 else 0
-
-# ── Print results ─────────────────────────────────────────────
+# ── Results ───────────────────────────────────────────────────
 print("\n")
-print("=" * 60)
+print("=" * 65)
 print("  RESULTS — BASELINE vs AGENTIC SYSTEM")
-print("=" * 60)
-print(f"  Test sample size     : {SAMPLE} sensor readings")
-print(f"  Dangerous situations : {dangerous_count}")
-print("-" * 60)
-print(f"  {'Metric':<35} {'Baseline':>8} {'Agentic':>8}")
-print("-" * 60)
-print(f"  {'Dangerous situations detected':<35} {b_acted:>8} {a_acted:>8}")
-print(f"  {'Dangerous situations MISSED':<35} {b_missed:>8} {a_missed:>8}")
-print(f"  {'Detection accuracy (%)':<35} {b_accuracy:>7.1f}% {a_accuracy:>7.1f}%")
-print(f"  {'Avg response time (seconds)':<35} {b_avg_response:>7.1f}s {a_avg_response:>7.1f}s")
-print(f"  {'Reduce traffic decisions':<35} {b_reduces:>8} {a_reduces:>8}")
-print(f"  {'Normal traffic decisions':<35} {b_normals:>8} {a_normals:>8}")
-print(f"  {'Road closure decisions':<35} {b_closures:>8} {a_closures:>8}")
-print(f"  {'Hotspot detections (fog layer)':<35} {'N/A':>8} {hotspots_caught:>8}")
-print(f"  {'PM2.5 unreacted exposure':<35} {b_pm25_exposure:>7.1f}  {a_pm25_exposure:>7.1f}")
-print(f"  {'PM2.5 exposure reduction (%)':<35} {'—':>8} {pm25_reduction:>7.1f}%")
-print("-" * 60)
+print("  (tested on 20% held-out data — never seen during training)")
+print("=" * 65)
+print(f"  {'Metric':<40} {'Baseline':>8} {'Agentic':>8}")
+print("-" * 65)
+print(f"  {'Accuracy (%)':<40} {base_acc*100:>7.1f}% {test_acc*100:>7.1f}%")
+print(f"  {'Precision (%)':<40} {base_precision*100:>7.1f}% {precision*100:>7.1f}%")
+print(f"  {'Recall (%)':<40} {base_recall*100:>7.1f}% {recall*100:>7.1f}%")
+print(f"  {'F1 Score (%)':<40} {base_f1*100:>7.1f}% {f1*100:>7.1f}%")
+print(f"  {'Dangerous situations detected':<40} {b_detected:>8} {a_detected:>8}")
+print(f"  {'Situations missed':<40} {dangerous_count-b_detected:>8} {dangerous_count-a_detected:>8}")
+print(f"  {'Reduce traffic decisions':<40} {'N/A':>8} {agent_reduces:>8}")
+print(f"  {'Road closure decisions':<40} {'0':>8} {agent_closes:>8}")
+print(f"  {'Hotspot detections (fog sim)':<40} {'0':>8} {hotspot_sim:>8}")
+print("-" * 65)
+print("  RESOURCE ASSIGNMENT METRICS (NEW):")
+print(f"  {'BW escalations (crisis zones)':<40} {'0':>8} {bw_escalations:>8}")
+print(f"  {'BW reductions (safe zones)':<40} {'0':>8} {bw_reductions:>8}")
+print(f"  {'Compute escalations':<40} {'0':>8} {compute_escalations:>8}")
+print(f"  {'Escalation accuracy (%)':<40} {'0':>8} {escalation_acc:>7.1f}%")
+print(f"  {'Total BW units saved (safe zones)':<40} {'0':>8} {total_bw_saved:>8}")
+print(f"  {'Learning threshold triggers':<40} {'0':>8} {learning_triggers:>8}")
+print("-" * 65)
 
 # ── Severity breakdown ────────────────────────────────────────
-print("\n  SEVERITY BREAKDOWN (agentic system):")
+print("\n  SEVERITY BREAKDOWN on test set (agentic):")
 print(f"  {'Severity':<12} {'Count':>8} {'%':>8}")
 print("  " + "-" * 30)
 for sev in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]:
-    count = (agentic_df["severity"] == sev).sum()
-    pct   = count / SAMPLE * 100
-    print(f"  {sev:<12} {count:>8} {pct:>7.1f}%")
+    count = sum(
+        1 for _, r in X_test.iterrows()
+        if get_severity(r["pm25"], r["visibility"]) == sev
+    )
+    print(f"  {sev:<12} {count:>8} {count/len(X_test)*100:>7.1f}%")
+
+# ── Full classification report ────────────────────────────────
+print("\n  FULL CLASSIFICATION REPORT:")
+print(classification_report(y_test, y_pred, target_names=["Normal", "Dangerous"]))
 
 # ── Conclusion ────────────────────────────────────────────────
-print("\n" + "=" * 60)
+improvement = test_acc * 100 - base_acc * 100
+print("=" * 65)
 print("  CONCLUSION")
-print("=" * 60)
-improvement = a_accuracy - b_accuracy
-print(f"  The agentic system detected {improvement:.1f}% more dangerous")
-print(f"  situations than the baseline system.")
-print(f"  PM2.5 unreacted exposure reduced by {pm25_reduction:.1f}%.")
-print(f"  Response time: {b_avg_response:.0f}s (baseline) vs {a_avg_response:.0f}s (agentic).")
-print(f"  Fog layer caught {hotspots_caught} district-wide hotspots")
-print(f"  that the baseline completely missed.")
-print("=" * 60)
+print("=" * 65)
+print(f"  Train/test split          : 80% train / 20% test (stratified)")
+print(f"  Model trained on          : {len(X_train)} rows")
+print(f"  Model tested on           : {len(X_test)} UNSEEN rows")
+print(f"  Accuracy improvement      : +{improvement:.1f}% over baseline")
+print(f"  Hotspot detections        : {hotspot_sim} (baseline = 0)")
+print(f"  Road closures issued      : {agent_closes} (baseline = 0)")
+print(f"  BW escalations (correct)  : {correct_escalations}/{bw_escalations} "
+      f"({escalation_acc:.1f}% accuracy)")
+print(f"  BW units saved            : {total_bw_saved} (safe-zone yield)")
+print(f"  Learning triggers         : {learning_triggers}")
+print("=" * 65)
 
-# ── Save results to CSV ───────────────────────────────────────
-output_file = "evaluation_results.csv"
+# ── Save results ──────────────────────────────────────────────
 summary = pd.DataFrame([
-    {"metric": "Test sample size",              "baseline": SAMPLE,           "agentic": SAMPLE},
-    {"metric": "Dangerous situations",          "baseline": dangerous_count,  "agentic": dangerous_count},
-    {"metric": "Situations detected",           "baseline": b_acted,          "agentic": a_acted},
-    {"metric": "Situations missed",             "baseline": b_missed,         "agentic": a_missed},
-    {"metric": "Detection accuracy %",          "baseline": round(b_accuracy,1), "agentic": round(a_accuracy,1)},
-    {"metric": "Avg response time (s)",         "baseline": round(b_avg_response,1), "agentic": round(a_avg_response,1)},
-    {"metric": "Reduce traffic decisions",      "baseline": b_reduces,        "agentic": a_reduces},
-    {"metric": "Road closure decisions",        "baseline": b_closures,       "agentic": a_closures},
-    {"metric": "Hotspot detections",            "baseline": 0,                "agentic": hotspots_caught},
-    {"metric": "PM2.5 exposure reduction %",    "baseline": 0,                "agentic": round(pm25_reduction,1)},
+    {"metric": "Train set size",              "baseline": len(X_train),              "agentic": len(X_train)},
+    {"metric": "Test set size",               "baseline": len(X_test),               "agentic": len(X_test)},
+    {"metric": "Accuracy %",                  "baseline": round(base_acc*100,2),     "agentic": round(test_acc*100,2)},
+    {"metric": "Precision %",                 "baseline": round(base_precision*100,2),"agentic": round(precision*100,2)},
+    {"metric": "Recall %",                    "baseline": round(base_recall*100,2),  "agentic": round(recall*100,2)},
+    {"metric": "F1 Score %",                  "baseline": round(base_f1*100,2),      "agentic": round(f1*100,2)},
+    {"metric": "Dangerous detected",          "baseline": b_detected,                "agentic": a_detected},
+    {"metric": "Situations missed",           "baseline": dangerous_count-b_detected,"agentic": dangerous_count-a_detected},
+    {"metric": "Road closures",               "baseline": 0,                         "agentic": agent_closes},
+    {"metric": "Hotspot detections",          "baseline": 0,                         "agentic": hotspot_sim},
+    {"metric": "BW escalations",              "baseline": 0,                         "agentic": bw_escalations},
+    {"metric": "BW reductions",               "baseline": 0,                         "agentic": bw_reductions},
+    {"metric": "Compute escalations",         "baseline": 0,                         "agentic": compute_escalations},
+    {"metric": "Escalation accuracy %",       "baseline": 0,                         "agentic": round(escalation_acc,2)},
+    {"metric": "BW units saved",              "baseline": 0,                         "agentic": total_bw_saved},
+    {"metric": "Learning threshold triggers", "baseline": 0,                         "agentic": learning_triggers},
 ])
-summary.to_csv(output_file, index=False)
-print(f"\n  Results saved to: {output_file}")
+summary.to_csv("evaluation_results.csv", index=False)
+print(f"\n  Results saved to: evaluation_results.csv")
 print(f"  Completed: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")

@@ -1,110 +1,131 @@
 import paho.mqtt.client as mqtt
 import json
 import time
-import random
+import pandas as pd
 
 # ============================================================
-# sensor.py — SENSOR LAYER
-# Areas: Industrial Zone / Residential Zone / Green Park
-# Each area is fully independent with its own profile
-# ⏱ Change SEND_INTERVAL to adjust update speed
+# sensor.py  —  SENSOR LAYER
+#
+# REAL DATA VERSION — reads directly from GlobalWeatherRepository
+# No random values. Every reading comes from a real city.
+#
+# Zone → Real City Mapping (1 zone = 1 city = 1 country):
+#
+#   Industrial Zone  → Jakarta, Indonesia   (high pollution)
+#   Residential Zone → Tehran, Iran         (medium pollution)
+#   Green Park       → Canberra, Australia  (low pollution)
+#
+# Each zone streams real rows from its assigned city,
+# one row per second, cycling through all available rows.
 # ============================================================
 
 BROKER        = "mqtt"
 PORT          = 1883
 PUB_TOPIC     = "city/all"
-SEND_INTERVAL = 1
+SEND_INTERVAL = 1   # seconds between updates
 
-AREA_PROFILES = {
-    "Industrial Zone": {
-        "base_pm25"   : 95.0,
-        "spike_chance": 0.30,
-        "recovery"    : 0.15,
-        "base_vis"    : 4.0,
-        "base_nox"    : 85.0,
-        "base_traffic": 75,
-    },
-    "Residential Zone": {
-        "base_pm25"   : 35.0,
-        "spike_chance": 0.15,
-        "recovery"    : 0.3,
-        "base_vis"    : 8.0,
-        "base_nox"    : 20.0,
-        "base_traffic": 50,
-    },
-    "Green Park": {
-        "base_pm25"   : 12.0,
-        "spike_chance": 0.05,
-        "recovery"    : 0.6,
-        "base_vis"    : 12.0,
-        "base_nox"    : 5.0,
-        "base_traffic": 20,
-    },
+# ── Load real dataset ────────────────────────────────────────
+print("[SENSOR] Loading GlobalWeatherRepository.csv ...")
+df = pd.read_csv("GlobalWeatherRepository.csv")
+
+# Clean: remove physically impossible values
+df = df[df["wind_kph"] < 200]
+df = df.dropna(subset=[
+    "air_quality_PM2.5",
+    "visibility_km",
+    "air_quality_Nitrogen_dioxide",
+    "humidity",
+    "wind_kph",
+    "condition_text"
+])
+
+print(f"[SENSOR] Dataset loaded: {len(df)} rows from {df['country'].nunique()} countries")
+
+# ── Zone → Real city mapping ─────────────────────────────────
+# Each zone is mapped to ONE real city from a DIFFERENT country,
+# chosen to match the zone's intended pollution profile.
+#
+#   Industrial Zone  → Jakarta, Indonesia   (avg PM2.5 ≈ 145 — high)
+#   Residential Zone → Tehran, Iran         (avg PM2.5 ≈ 55  — medium)
+#   Green Park       → Canberra, Australia  (avg PM2.5 ≈ 8   — low)
+
+ZONE_CITIES = {
+    "Industrial Zone" : ["Jakarta"],
+    "Residential Zone": ["Tehran"],
+    "Green Park"      : ["Canberra"],
 }
 
-area_state = {
-    "Industrial Zone":  {"pm25": 95.0,  "nox": 85.0, "visibility": 4.0,  "traffic": 75, "spiking": False},
-    "Residential Zone": {"pm25": 35.0,  "nox": 20.0, "visibility": 8.0,  "traffic": 50, "spiking": False},
-    "Green Park":       {"pm25": 12.0,  "nox": 5.0,  "visibility": 12.0, "traffic": 20, "spiking": False},
-}
+# ── Extract real rows per zone ───────────────────────────────
+zone_data = {}
+for zone, cities in ZONE_CITIES.items():
+    rows = df[df["location_name"].isin(cities)].copy()
+    rows = rows.reset_index(drop=True)
+    zone_data[zone] = rows
+    print(
+        f"[SENSOR] {zone:20s} → "
+        f"{len(rows)} real rows from: {cities[:3]}"
+    )
 
-def get_time_factor():
-    hour = time.localtime().tm_hour
-    if 7 <= hour <= 9:    return 1.5
-    elif 17 <= hour <= 19: return 1.6
-    elif 22 <= hour or hour <= 5: return 0.5
-    else: return 1.0
+print()
 
-def add_noise(value, pct=0.08):
-    return round(value * (1 + pct * random.uniform(-1, 1)), 2)
-
-def update_area(area_name):
-    profile = AREA_PROFILES[area_name]
-    state   = area_state[area_name]
-    time_f  = get_time_factor()
-
-    if not state["spiking"]:
-        if random.random() < profile["spike_chance"]:
-            state["spiking"]    = True
-            spike_mult          = random.uniform(2.0, 4.5)
-            state["pm25"]       = profile["base_pm25"] * spike_mult * time_f
-            state["nox"]        = profile["base_nox"]  * spike_mult * time_f
-            state["visibility"] = max(0.3, profile["base_vis"] - random.uniform(2, 6))
-            state["traffic"]    = min(100, int(profile["base_traffic"] * 1.3))
+# Check if we have enough rows
+for zone, rows in zone_data.items():
+    if len(rows) == 0:
+        print(f"[SENSOR] WARNING: No rows found for {zone}!")
+        print(f"[SENSOR] Using fallback: all rows with matching PM2.5 range")
+        if zone == "Industrial Zone":
+            zone_data[zone] = df[df["air_quality_PM2.5"] > 75].copy().reset_index(drop=True)
+        elif zone == "Residential Zone":
+            zone_data[zone] = df[
+                (df["air_quality_PM2.5"] >= 20) &
+                (df["air_quality_PM2.5"] <= 75)
+            ].copy().reset_index(drop=True)
         else:
-            state["pm25"]       = add_noise(profile["base_pm25"] * time_f * random.uniform(0.8, 1.2))
-            state["nox"]        = add_noise(profile["base_nox"]  * time_f * random.uniform(0.8, 1.2))
-            state["visibility"] = add_noise(profile["base_vis"]  * random.uniform(0.9, 1.1))
-            state["traffic"]    = int(add_noise(profile["base_traffic"] * time_f))
-    else:
-        state["pm25"]       = round(state["pm25"]       * (1 - profile["recovery"] * random.uniform(0.1, 0.3)), 2)
-        state["nox"]        = round(state["nox"]        * (1 - profile["recovery"] * random.uniform(0.1, 0.3)), 2)
-        state["visibility"] = round(min(profile["base_vis"], state["visibility"] + random.uniform(0.1, 0.5)), 2)
-        state["traffic"]    = max(profile["base_traffic"], state["traffic"] - random.randint(2, 8))
-        if state["pm25"] <= profile["base_pm25"] * 1.2:
-            state["spiking"] = False
+            zone_data[zone] = df[df["air_quality_PM2.5"] < 20].copy().reset_index(drop=True)
+        print(f"[SENSOR] Fallback rows: {len(zone_data[zone])}")
 
-    state["pm25"]       = max(1.0,  min(400.0, state["pm25"]))
-    state["nox"]        = max(0.5,  min(300.0, state["nox"]))
-    state["visibility"] = max(0.1,  min(15.0,  state["visibility"]))
-    state["traffic"]    = max(5,    min(100,   state["traffic"]))
+# ── Current index per zone (cycles through rows) ─────────────
+zone_index = {zone: 0 for zone in ZONE_CITIES}
+
+# ── Get next real row for a zone ─────────────────────────────
+def get_next_reading(zone):
+    """
+    Returns the next real row from the dataset for this zone.
+    Cycles back to the beginning when all rows are used.
+    """
+    rows = zone_data[zone]
+    idx  = zone_index[zone] % len(rows)
+    row  = rows.iloc[idx]
+    zone_index[zone] += 1
+
+    # Compute traffic score from real humidity and wind
+    traffic = int(row["humidity"] * 0.4 + row["wind_kph"] * 0.6)
+    traffic = max(5, min(100, traffic))
 
     return {
-        "district"  : area_name,
-        "pm25"      : round(state["pm25"], 2),
-        "visibility": round(state["visibility"], 2),
-        "traffic"   : state["traffic"],
-        "nox"       : round(state["nox"], 2),
-        "spiking"   : state["spiking"]
+        "district"   : zone,
+        "pm25"       : round(float(row["air_quality_PM2.5"]), 2),
+        "visibility" : round(float(row["visibility_km"]), 2),
+        "nox"        : round(float(row["air_quality_Nitrogen_dioxide"]), 2),
+        "traffic"    : traffic,
+        "condition"  : str(row["condition_text"]),
+        "city"       : str(row["location_name"]),
+        "country"    : str(row["country"]),
+        "humidity"   : float(row["humidity"]),
+        "wind_kph"   : float(row["wind_kph"]),
     }
 
+# ── MQTT ─────────────────────────────────────────────────────
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
-        print("[SENSOR] Connected ✅")
-        print(f"[SENSOR] Areas: {list(AREA_PROFILES.keys())}")
+        print("[SENSOR] Connected to MQTT broker ✅")
+        print("[SENSOR] Streaming REAL data from GlobalWeatherRepository")
         print(f"[SENSOR] Update interval: {SEND_INTERVAL}s\n")
+        for zone, cities in ZONE_CITIES.items():
+            print(f"  {zone:20s} ← real rows from {cities}")
+        print()
 
-print("[SENSOR] Starting...")
+print("[SENSOR] Starting ...")
 time.sleep(5)
 
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
@@ -113,19 +134,38 @@ client.connect(BROKER, PORT, 60)
 client.loop_start()
 time.sleep(2)
 
+# ── Main loop ─────────────────────────────────────────────────
+print("[SENSOR] Streaming real data ...\n")
 cycle = 0
+
 while True:
     cycle += 1
-    print(f"[SENSOR] ── Cycle {cycle} ──────────────────────────────")
-    for area_name in ["Industrial Zone", "Residential Zone", "Green Park"]:
-        data    = update_area(area_name)
-        spike_t = " 🔴 SPIKE" if data["spiking"] else ""
+    print(f"[SENSOR] ── Cycle {cycle} (Real data) ──────────────────────")
+
+    for zone in ["Industrial Zone", "Residential Zone", "Green Park"]:
+        reading = get_next_reading(zone)
+
+        # Publish to MQTT
         client.publish(PUB_TOPIC, json.dumps({
-            "district"  : data["district"],
-            "pm25"      : data["pm25"],
-            "visibility": data["visibility"],
-            "traffic"   : data["traffic"],
-            "nox"       : data["nox"],
+            "district"  : reading["district"],
+            "pm25"      : reading["pm25"],
+            "visibility": reading["visibility"],
+            "nox"       : reading["nox"],
+            "traffic"   : reading["traffic"],
+            "city"      : reading["city"],
+            "country"   : reading["country"],
+            "condition" : reading["condition"],
         }))
-        print(f"[SENSOR] {data['district']:18s} | PM2.5={data['pm25']:6.1f} | Vis={data['visibility']:4.1f}km | Traffic={data['traffic']:3d} | NOx={data['nox']:5.1f}{spike_t}")
+
+
+        print(
+            f"[SENSOR] {reading['district']:20s} | "
+            f"PM2.5={reading['pm25']:6.1f} | "
+            f"Vis={reading['visibility']:5.1f}km | "
+            f"NOx={reading['nox']:6.1f} | "
+            f"Traffic={reading['traffic']:3d} | "
+            f"{reading['city']}, {reading['country']} "
+            f"({reading['condition']})"
+        )
     time.sleep(SEND_INTERVAL)
+    

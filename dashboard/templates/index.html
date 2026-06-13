@@ -4,74 +4,101 @@
 <meta charset="UTF-8">
 <title>Urban Distributed System — Admin Panel</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; font-size:13px; padding:12px; }
+
+/* ── Header ── */
 .header { display:flex; justify-content:space-between; align-items:center; background:#1a1d27; border:1px solid #2a2d3a; border-radius:10px; padding:12px 20px; margin-bottom:12px; }
 .header-title { font-size:15px; font-weight:700; color:#fff; letter-spacing:1px; }
 .header-right { display:flex; align-items:center; gap:14px; font-size:11px; }
 .live-dot { width:9px; height:9px; border-radius:50%; background:#22c55e; animation:pulse 1.5s infinite; }
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-#clock { color:#4b5563; }
+#clock  { color:#4b5563; }
 .uptime { color:#4b5563; font-size:11px; }
 
+/* ── Alert bar ── */
 #alert-bar { background:#450a0a; border:1px solid #f87171; border-radius:8px; padding:10px 16px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
 #alert-bar.hidden { display:none; }
-.alert-title { color:#f87171; font-weight:700; font-size:13px; }
+.alert-title  { color:#f87171; font-weight:700; font-size:13px; }
 .alert-detail { color:#fca5a5; font-size:11px; margin-top:3px; }
-#alert-level { color:#f87171; font-size:20px; font-weight:700; }
+#alert-level  { color:#f87171; font-size:20px; font-weight:700; }
 
+/* ── KPI row ── */
 .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
 .kpi { background:#1a1d27; border:1px solid #2a2d3a; border-radius:8px; padding:12px 16px; }
 .kpi-label { font-size:10px; color:#4b5563; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
-.kpi-val { font-size:24px; font-weight:700; }
-.kpi-sub { font-size:10px; color:#4b5563; margin-top:2px; }
+.kpi-val   { font-size:24px; font-weight:700; }
+.kpi-sub   { font-size:10px; color:#4b5563; margin-top:2px; }
 
+/* ── Section label ── */
 .sec { font-size:10px; color:#4b5563; text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; margin-top:4px; }
+
+/* ── Area cards ── */
 .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
 .area-card { background:#1a1d27; border:1px solid #2a2d3a; border-radius:8px; padding:14px; }
-.area-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
-.area-name { font-weight:700; color:#fff; font-size:13px; }
-.sev { font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; }
+
+/* Card header: city/country as main title, zone label below */
+.area-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
+.area-title-block { display:flex; flex-direction:column; gap:2px; }
+.area-city   { font-weight:700; color:#fff; font-size:14px; display:flex; align-items:center; gap:5px; }
+.area-zone   { font-size:10px; color:#4b5563; text-transform:uppercase; letter-spacing:.06em; }
+
+.sev { font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px; white-space:nowrap; }
 .sev-LOW      { background:#14532d; color:#22c55e; }
 .sev-MEDIUM   { background:#713f12; color:#fbbf24; }
 .sev-HIGH     { background:#7c2d12; color:#fb923c; }
 .sev-CRITICAL { background:#450a0a; color:#f87171; }
+
 .mrow { display:flex; justify-content:space-between; margin-bottom:5px; }
 .mk { color:#4b5563; font-size:11px; }
 .mv { color:#e0e0e0; font-size:11px; }
+
 .bar-wrap { background:#0f1117; border-radius:4px; height:5px; margin:5px 0 8px; }
 .bar-fill { height:100%; border-radius:4px; transition:width .6s ease; }
+
 .decision-text { font-size:12px; font-weight:700; margin-top:8px; padding-top:8px; border-top:1px solid #2a2d3a; }
 .dec-normal { color:#22c55e; }
 .dec-reduce { color:#fbbf24; }
 .dec-close  { color:#f87171; }
+
 .trend-up   { color:#f87171; font-size:13px; }
 .trend-down { color:#22c55e; font-size:13px; }
 .trend-flat { color:#4b5563; font-size:13px; }
 
+/* ── Mini chart inside card ── */
+.mini-chart-wrap { margin-top:10px; padding-top:8px; border-top:1px solid #2a2d3a; height:80px; position:relative; }
+.mini-chart-label { font-size:9px; color:#4b5563; text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px; }
+
+/* ── 2-col panels ── */
 .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
 .panel { background:#1a1d27; border:1px solid #2a2d3a; border-radius:8px; padding:14px; }
 .panel-title { font-size:11px; color:#4b5563; text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; border-bottom:1px solid #2a2d3a; padding-bottom:6px; }
 
-.log-panel { background:#1a1d27; border:1px solid #2a2d3a; border-radius:8px; padding:14px; }
+/* ── District chart ── */
+.chart-panel { background:#1a1d27; border:1px solid #2a2d3a; border-radius:8px; padding:14px; margin-bottom:12px; }
+.chart-wrap  { height:200px; position:relative; }
+
+/* ── Log ── */
+.log-panel  { background:#1a1d27; border:1px solid #2a2d3a; border-radius:8px; padding:14px; }
 .log-scroll { max-height:240px; overflow-y:auto; }
-.log-line { display:flex; gap:10px; padding:4px 0; border-bottom:1px solid #1e2130; font-size:11px; }
-.log-time { color:#374151; flex-shrink:0; width:55px; }
-.log-tag  { flex-shrink:0; width:60px; font-weight:700; }
-.tag-EDGE  { color:#60a5fa; }
-.tag-FOG   { color:#a78bfa; }
-.tag-CLOUD { color:#34d399; }
+.log-line   { display:flex; gap:10px; padding:4px 0; border-bottom:1px solid #1e2130; font-size:11px; }
+.log-time   { color:#374151; flex-shrink:0; width:55px; }
+.log-tag    { flex-shrink:0; width:60px; font-weight:700; }
+.tag-EDGE   { color:#60a5fa; }
+.tag-FOG    { color:#a78bfa; }
+.tag-CLOUD  { color:#34d399; }
 .log-normal   { color:#6b7280; }
 .log-medium   { color:#fbbf24; }
 .log-high     { color:#fb923c; }
 .log-critical { color:#f87171; }
+
 .pol-NORMAL    { color:#22c55e; }
 .pol-ALERT     { color:#fbbf24; }
 .pol-EMERGENCY { color:#f87171; }
 
-.area-icon { font-size:16px; margin-right:4px; }
-
+/* ── Tooltips ── */
 .tooltip-wrap { position:relative; display:inline-block; cursor:help; }
 .tooltip-wrap .tip {
   visibility:hidden; opacity:0; background:#1E293B; color:#e0e0e0;
@@ -82,10 +109,17 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
 }
 .tooltip-wrap:hover .tip { visibility:visible; opacity:1; }
 .info-icon { color:#4b5563; font-size:10px; margin-left:3px; }
+
+/* ── Resource badges ── */
+.res-row { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; padding-top:8px; border-top:1px solid #2a2d3a; }
+.res-badge { font-size:9px; padding:2px 7px; border-radius:8px; background:#0f1117; border:1px solid #2a2d3a; color:#6b7280; }
+.res-badge.high   { border-color:#fb923c; color:#fb923c; }
+.res-badge.medium { border-color:#fbbf24; color:#fbbf24; }
 </style>
 </head>
 <body>
 
+<!-- Header -->
 <div class="header">
   <div class="header-title">🏙 URBAN DISTRIBUTED SYSTEM — ADMIN PANEL</div>
   <div class="header-right">
@@ -96,6 +130,7 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
   </div>
 </div>
 
+<!-- Alert bar -->
 <div id="alert-bar" class="hidden">
   <div>
     <div class="alert-title" id="alert-title">⚠ HOTSPOT DETECTED — FOG LAYER</div>
@@ -104,6 +139,7 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
   <div id="alert-level">—</div>
 </div>
 
+<!-- KPI Row -->
 <div class="kpi-row">
   <div class="kpi">
     <div class="kpi-label">Cloud Policy</div>
@@ -127,13 +163,25 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
   </div>
 </div>
 
+<!-- District PM2.5 Chart -->
+<div class="sec">DISTRICT PM2.5 TREND — ALL ZONES</div>
+<div class="chart-panel">
+  <div class="chart-wrap">
+    <canvas id="district-chart"></canvas>
+  </div>
+</div>
+
+<!-- Edge Layer Cards -->
 <div class="sec">EDGE LAYER — 3 ZONES</div>
 <div class="grid3">
 
   <!-- Industrial Zone -->
   <div class="area-card">
     <div class="area-header">
-      <div class="area-name"><span class="area-icon">🏭</span>Industrial Zone</div>
+      <div class="area-title-block">
+        <div class="area-city"><span>🏭</span><span id="city-Industrial Zone">Jakarta, Indonesia</span></div>
+        <div class="area-zone">Industrial Zone</div>
+      </div>
       <span class="sev sev-LOW" id="sev-Industrial Zone">LOW</span>
     </div>
     <div class="mrow">
@@ -144,16 +192,24 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
       </span>
     </div>
     <div class="bar-wrap"><div class="bar-fill" id="bar-Industrial Zone" style="width:0%;background:#22c55e"></div></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous dense fog. System closes roads at &lt;2km.</span></span></span><span class="mv" id="vis-Industrial Zone">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides from car engines and factories. Causes respiratory problems. Used as secondary pollution signal.</span></span></span><span class="mv" id="nox-Industrial Zone">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion score 0-100. Computed from humidity + wind speed. Higher = harder driving conditions.</span></span></span><span class="mv" id="trf-Industrial Zone">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous.</span></span></span><span class="mv" id="vis-Industrial Zone">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides. Causes respiratory problems. Secondary pollution signal.</span></span></span><span class="mv" id="nox-Industrial Zone">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion 0-100. Computed from humidity + wind speed.</span></span></span><span class="mv" id="trf-Industrial Zone">—</span></div>
     <div class="decision-text dec-normal" id="dec-Industrial Zone">—</div>
+    <div class="res-row" id="res-Industrial Zone"></div>
+    <div class="mini-chart-wrap">
+      <div class="mini-chart-label">PM2.5 History</div>
+      <canvas id="mini-chart-Industrial Zone"></canvas>
+    </div>
   </div>
 
   <!-- Residential Zone -->
   <div class="area-card">
     <div class="area-header">
-      <div class="area-name"><span class="area-icon">🏘</span>Residential Zone</div>
+      <div class="area-title-block">
+        <div class="area-city"><span>🏘</span><span id="city-Residential Zone">Tehran, Iran</span></div>
+        <div class="area-zone">Residential Zone</div>
+      </div>
       <span class="sev sev-LOW" id="sev-Residential Zone">LOW</span>
     </div>
     <div class="mrow">
@@ -164,16 +220,24 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
       </span>
     </div>
     <div class="bar-wrap"><div class="bar-fill" id="bar-Residential Zone" style="width:0%;background:#22c55e"></div></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous dense fog. System closes roads at &lt;2km.</span></span></span><span class="mv" id="vis-Residential Zone">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides from car engines and factories. Causes respiratory problems. Used as secondary pollution signal.</span></span></span><span class="mv" id="nox-Residential Zone">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion score 0-100. Computed from humidity + wind speed. Higher = harder driving conditions.</span></span></span><span class="mv" id="trf-Residential Zone">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous.</span></span></span><span class="mv" id="vis-Residential Zone">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides. Causes respiratory problems. Secondary pollution signal.</span></span></span><span class="mv" id="nox-Residential Zone">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion 0-100. Computed from humidity + wind speed.</span></span></span><span class="mv" id="trf-Residential Zone">—</span></div>
     <div class="decision-text dec-normal" id="dec-Residential Zone">—</div>
+    <div class="res-row" id="res-Residential Zone"></div>
+    <div class="mini-chart-wrap">
+      <div class="mini-chart-label">PM2.5 History</div>
+      <canvas id="mini-chart-Residential Zone"></canvas>
+    </div>
   </div>
 
   <!-- Green Park -->
   <div class="area-card">
     <div class="area-header">
-      <div class="area-name"><span class="area-icon">🌳</span>Green Park</div>
+      <div class="area-title-block">
+        <div class="area-city"><span>🌳</span><span id="city-Green Park">Canberra, Australia</span></div>
+        <div class="area-zone">Green Park</div>
+      </div>
       <span class="sev sev-LOW" id="sev-Green Park">LOW</span>
     </div>
     <div class="mrow">
@@ -184,13 +248,19 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
       </span>
     </div>
     <div class="bar-wrap"><div class="bar-fill" id="bar-Green Park" style="width:0%;background:#22c55e"></div></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous dense fog. System closes roads at &lt;2km.</span></span></span><span class="mv" id="vis-Green Park">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides from car engines and factories. Causes respiratory problems. Used as secondary pollution signal.</span></span></span><span class="mv" id="nox-Green Park">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion score 0-100. Computed from humidity + wind speed. Higher = harder driving conditions.</span></span></span><span class="mv" id="trf-Green Park">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous.</span></span></span><span class="mv" id="vis-Green Park">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides. Causes respiratory problems. Secondary pollution signal.</span></span></span><span class="mv" id="nox-Green Park">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion 0-100. Computed from humidity + wind speed.</span></span></span><span class="mv" id="trf-Green Park">—</span></div>
     <div class="decision-text dec-normal" id="dec-Green Park">—</div>
+    <div class="res-row" id="res-Green Park"></div>
+    <div class="mini-chart-wrap">
+      <div class="mini-chart-label">PM2.5 History</div>
+      <canvas id="mini-chart-Green Park"></canvas>
+    </div>
   </div>
 </div>
 
+<!-- Fog + Cloud panels -->
 <div class="grid2">
   <div class="panel">
     <div class="panel-title">🌫 FOG LAYER — DISTRICT COORDINATOR</div>
@@ -214,6 +284,7 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
   </div>
 </div>
 
+<!-- Event Log -->
 <div class="log-panel">
   <div class="panel-title">📋 LIVE EVENT LOG — ALL LAYERS</div>
   <div class="log-scroll" id="log-container">
@@ -222,118 +293,313 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
 </div>
 
 <script>
-  const AREAS = ["Industrial Zone", "Residential Zone", "Green Park"];
+const AREAS = ["Industrial Zone", "Residential Zone", "Green Park"];
+const MAX_POINTS = 30;   // how many data points to keep in charts
 
-  // Clock
-  setInterval(() => {
-    document.getElementById("clock").textContent = new Date().toLocaleTimeString("en-GB");
-  }, 1000);
+// ── Chart colours per zone ────────────────────────────────
+const ZONE_COLORS = {
+  "Industrial Zone" : { line:"#fb923c", fill:"rgba(251,146,60,0.12)"  },
+  "Residential Zone": { line:"#60a5fa", fill:"rgba(96,165,250,0.12)"  },
+  "Green Park"      : { line:"#22c55e", fill:"rgba(34,197,94,0.12)"   },
+};
 
-  // Uptime
-  const startTime = Date.now();
-  setInterval(() => {
-    const sec  = Math.floor((Date.now() - startTime) / 1000);
-    const h    = String(Math.floor(sec/3600)).padStart(2,"0");
-    const m    = String(Math.floor((sec%3600)/60)).padStart(2,"0");
-    const s    = String(sec%60).padStart(2,"0");
-    document.getElementById("uptime").textContent = `Uptime: ${h}:${m}:${s}`;
-  }, 1000);
+// ── WHO guideline reference line ──────────────────────────
+const WHO_LIMIT = 75;
 
-  function sevColor(sev) {
-    if (sev==="CRITICAL") return "#f87171";
-    if (sev==="HIGH")     return "#fb923c";
-    if (sev==="MEDIUM")   return "#fbbf24";
-    return "#22c55e";
+// ── Shared label history (tick counter) ──────────────────
+let tick = 0;
+const districtLabels = [];
+const districtData   = { "Industrial Zone":[], "Residential Zone":[], "Green Park":[] };
+
+// ── Clock & Uptime ────────────────────────────────────────
+setInterval(() => {
+  document.getElementById("clock").textContent = new Date().toLocaleTimeString("en-GB");
+}, 1000);
+const startTime = Date.now();
+setInterval(() => {
+  const sec = Math.floor((Date.now() - startTime) / 1000);
+  const h = String(Math.floor(sec/3600)).padStart(2,"0");
+  const m = String(Math.floor((sec%3600)/60)).padStart(2,"0");
+  const s = String(sec%60).padStart(2,"0");
+  document.getElementById("uptime").textContent = `Uptime: ${h}:${m}:${s}`;
+}, 1000);
+
+// ── Helpers ───────────────────────────────────────────────
+function sevColor(sev) {
+  if (sev==="CRITICAL") return "#f87171";
+  if (sev==="HIGH")     return "#fb923c";
+  if (sev==="MEDIUM")   return "#fbbf24";
+  return "#22c55e";
+}
+function barPct(pm25)  { return Math.min(100,(pm25/300)*100).toFixed(1); }
+function decClass(d)   { return d==="Close road"?"dec-close":d==="Reduce traffic"?"dec-reduce":"dec-normal"; }
+function polClass(p)   { return p==="EMERGENCY"?"pol-EMERGENCY":p==="ALERT"?"pol-ALERT":"pol-NORMAL"; }
+function trendClass(t) { return t==="↑"?"trend-up":t==="↓"?"trend-down":"trend-flat"; }
+
+// ── Build chart defaults ──────────────────────────────────
+function chartDefaults() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: {
+      legend: { display:false },
+      tooltip: {
+        backgroundColor:"#1a1d27",
+        borderColor:"#2a2d3a",
+        borderWidth:1,
+        titleColor:"#9ca3af",
+        bodyColor:"#e0e0e0",
+        callbacks: { label: ctx => ` PM2.5: ${ctx.parsed.y.toFixed(1)} µg/m³` }
+      }
+    },
+    scales: {
+      x: {
+        display: true,
+        ticks: { color:"#374151", font:{size:9}, maxTicksLimit:6 },
+        grid:  { color:"#1e2130" }
+      },
+      y: {
+        display: true,
+        beginAtZero: true,
+        ticks: { color:"#374151", font:{size:9} },
+        grid:  { color:"#1e2130" }
+      }
+    }
+  };
+}
+
+// ── District (multi-line) chart ───────────────────────────
+const districtCtx = document.getElementById("district-chart").getContext("2d");
+const districtChart = new Chart(districtCtx, {
+  type: "line",
+  data: {
+    labels: [],
+    datasets: [
+      ...AREAS.map(area => ({
+        label: area,
+        data: [],
+        borderColor: ZONE_COLORS[area].line,
+        backgroundColor: ZONE_COLORS[area].fill,
+        fill: true,
+        tension: 0.4,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      })),
+      // WHO guideline reference line
+      {
+        label: "WHO Limit (75)",
+        data: [],
+        borderColor: "#f87171",
+        borderDash: [4,4],
+        borderWidth: 1,
+        pointRadius: 0,
+        fill: false,
+        tension: 0,
+      }
+    ]
+  },
+  options: {
+    ...chartDefaults(),
+    plugins: {
+      ...chartDefaults().plugins,
+      legend: {
+        display: true,
+        labels: {
+          color: "#9ca3af",
+          font: { size:10, family:"Courier New" },
+          boxWidth: 12,
+          padding: 16,
+        }
+      }
+    }
   }
-  function barPct(pm25)  { return Math.min(100,(pm25/300)*100).toFixed(1); }
-  function decClass(d)   { return d==="Close road"?"dec-close":d==="Reduce traffic"?"dec-reduce":"dec-normal"; }
-  function polClass(p)   { return p==="EMERGENCY"?"pol-EMERGENCY":p==="ALERT"?"pol-ALERT":"pol-NORMAL"; }
-  function trendClass(t) { return t==="↑"?"trend-up":t==="↓"?"trend-down":"trend-flat"; }
+});
 
-  function updateDashboard(data) {
-    const s    = data.state;
-    const logs = data.event_log;
+// ── Mini charts (one per zone) ────────────────────────────
+const miniCharts = {};
+AREAS.forEach(area => {
+  const ctx = document.getElementById(`mini-chart-${area}`).getContext("2d");
+  miniCharts[area] = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: ZONE_COLORS[area].line,
+        backgroundColor: ZONE_COLORS[area].fill,
+        fill: true,
+        tension: 0.4,
+        borderWidth: 1.5,
+        pointRadius: 0,
+      }]
+    },
+    options: {
+      ...chartDefaults(),
+      scales: {
+        x: { display:false },
+        y: {
+          display: true,
+          ticks: { color:"#374151", font:{size:8}, maxTicksLimit:3 },
+          grid:  { color:"#1e2130" }
+        }
+      }
+    }
+  });
+});
 
-    // KPIs
-    const pe = document.getElementById("kpi-policy");
-    pe.textContent = s.cloud_policy;
-    pe.className   = "kpi-val " + polClass(s.cloud_policy);
-    document.getElementById("kpi-policy-time").textContent = "Updated " + s.cloud_updated;
-    document.getElementById("kpi-pm25").textContent        = s.fog_avg_pm25.toFixed(1);
-    document.getElementById("kpi-hotspots").textContent    = s.cloud_hotspots;
-    document.getElementById("kpi-total").textContent       = s.cloud_total_msg;
-    document.getElementById("kpi-breakdown").textContent   = `↓${s.cloud_reduces} reduce | ↑${s.cloud_normals} normal`;
+// ── Resource badges ───────────────────────────────────────
+function renderResourceBadges(area, res) {
+  if (!res || !Object.keys(res).length) return;
+  const container = document.getElementById(`res-${area}`);
+  const cpuClass  = res.compute_priority === "HIGH" ? "high" : res.compute_priority === "MEDIUM" ? "medium" : "";
+  const bwClass   = res.bandwidth_limit  >  75     ? "high" : res.bandwidth_limit  > 50         ? "medium" : "";
+  container.innerHTML = `
+    <span class="res-badge ${bwClass}">BW ${res.bandwidth_limit}%</span>
+    <span class="res-badge ${cpuClass}">CPU ${res.compute_priority}</span>
+    <span class="res-badge">Sensors ${res.sensors_active}</span>
+    <span class="res-badge">⏱ ${res.reporting_interval}s</span>
+  `;
+}
 
-    // Alert bar
-    const ab = document.getElementById("alert-bar");
-    if (s.fog_hotspot) {
-      ab.classList.remove("hidden");
-      document.getElementById("alert-title").textContent  = `⚠ ${s.fog_hotspot_level} HOTSPOT — FOG LAYER`;
-      document.getElementById("alert-detail").textContent = `Zones: ${s.fog_affected_areas.join(", ")} | Avg PM2.5: ${s.fog_avg_pm25} µg/m³ | Command: ${s.fog_command}`;
-      document.getElementById("alert-level").textContent  = s.fog_hotspot_level;
-    } else {
-      ab.classList.add("hidden");
+// ── Push new data point to district chart ─────────────────
+function pushDistrictPoint(areas) {
+  tick++;
+  const label = tick.toString();
+
+  districtLabels.push(label);
+  if (districtLabels.length > MAX_POINTS) districtLabels.shift();
+  districtChart.data.labels = [...districtLabels];
+
+  AREAS.forEach((area, i) => {
+    const pm25 = areas[area] ? areas[area].pm25 : 0;
+    districtData[area].push(pm25);
+    if (districtData[area].length > MAX_POINTS) districtData[area].shift();
+    districtChart.data.datasets[i].data = [...districtData[area]];
+  });
+
+  // WHO reference line — same length as labels, always 75
+  const whoData = districtLabels.map(() => WHO_LIMIT);
+  districtChart.data.datasets[AREAS.length].data = whoData;
+
+  districtChart.update("none");
+}
+
+// ── Push new point to a mini chart ────────────────────────
+function pushMiniPoint(area, pm25) {
+  const chart = miniCharts[area];
+  chart.data.labels.push("");
+  chart.data.datasets[0].data.push(pm25);
+  if (chart.data.labels.length > MAX_POINTS) {
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+  }
+  chart.update("none");
+}
+
+// ── Main update function ──────────────────────────────────
+function updateDashboard(data) {
+  const s    = data.state;
+  const logs = data.event_log;
+
+  // KPIs
+  const pe = document.getElementById("kpi-policy");
+  pe.textContent = s.cloud_policy;
+  pe.className   = "kpi-val " + polClass(s.cloud_policy);
+  document.getElementById("kpi-policy-time").textContent = "Updated " + s.cloud_updated;
+  document.getElementById("kpi-pm25").textContent        = s.fog_avg_pm25.toFixed(1);
+  document.getElementById("kpi-hotspots").textContent    = s.cloud_hotspots;
+  document.getElementById("kpi-total").textContent       = s.cloud_total_msg;
+  document.getElementById("kpi-breakdown").textContent   = `↓${s.cloud_reduces} reduce | ↑${s.cloud_normals} normal`;
+
+  // Alert bar
+  const ab = document.getElementById("alert-bar");
+  if (s.fog_hotspot) {
+    ab.classList.remove("hidden");
+    document.getElementById("alert-title").textContent  = `⚠ ${s.fog_hotspot_level} HOTSPOT — FOG LAYER`;
+    document.getElementById("alert-detail").textContent = `Zones: ${s.fog_affected_areas.join(", ")} | Avg PM2.5: ${s.fog_avg_pm25} µg/m³ | Command: ${s.fog_command}`;
+    document.getElementById("alert-level").textContent  = s.fog_hotspot_level;
+  } else {
+    ab.classList.add("hidden");
+  }
+
+  // Area cards
+  AREAS.forEach(area => {
+    const a = s.areas[area];
+    if (!a) return;
+
+    // City/country as heading (NEW)
+    const cityEl = document.getElementById(`city-${area}`);
+    if (cityEl && a.city && a.city !== "—") {
+      cityEl.textContent = `${a.city}, ${a.country}`;
     }
 
-    // Area cards
-    AREAS.forEach(area => {
-      const a = s.areas[area];
-      if (!a) return;
-      document.getElementById(`pm25-${area}`).textContent = a.pm25.toFixed(1) + " µg/m³";
-      document.getElementById(`vis-${area}`).textContent  = a.visibility + " km";
-      document.getElementById(`nox-${area}`).textContent  = a.nox.toFixed(1);
-      document.getElementById(`trf-${area}`).textContent  = a.traffic;
+    document.getElementById(`pm25-${area}`).textContent = a.pm25.toFixed(1) + " µg/m³";
+    document.getElementById(`vis-${area}`).textContent  = a.visibility + " km";
+    document.getElementById(`nox-${area}`).textContent  = a.nox.toFixed(1);
+    document.getElementById(`trf-${area}`).textContent  = a.traffic;
 
-      const trendEl = document.getElementById(`trend-${area}`);
-      trendEl.textContent  = a.trend || "→";
-      trendEl.className    = trendClass(a.trend);
+    const trendEl = document.getElementById(`trend-${area}`);
+    trendEl.textContent = a.trend || "→";
+    trendEl.className   = trendClass(a.trend);
 
-      const sevEl = document.getElementById(`sev-${area}`);
-      sevEl.textContent = a.severity;
-      sevEl.className   = "sev sev-" + a.severity;
+    const sevEl = document.getElementById(`sev-${area}`);
+    sevEl.textContent = a.severity;
+    sevEl.className   = "sev sev-" + a.severity;
 
-      const bar = document.getElementById(`bar-${area}`);
-      bar.style.width      = barPct(a.pm25) + "%";
-      bar.style.background = sevColor(a.severity);
+    const bar = document.getElementById(`bar-${area}`);
+    bar.style.width      = barPct(a.pm25) + "%";
+    bar.style.background = sevColor(a.severity);
 
-      const decEl = document.getElementById(`dec-${area}`);
-      decEl.textContent = "→ " + a.decision;
-      decEl.className   = "decision-text " + decClass(a.decision);
-    });
+    const decEl = document.getElementById(`dec-${area}`);
+    decEl.textContent = "→ " + a.decision;
+    decEl.className   = "decision-text " + decClass(a.decision);
 
-    // Fog panel
-    const fl = document.getElementById("fog-hotspot-level");
-    fl.textContent  = s.fog_hotspot_level;
-    fl.style.color  = s.fog_hotspot ? sevColor(s.fog_hotspot_level) : "#6b7280";
-    document.getElementById("fog-command").textContent  = s.fog_command;
-    document.getElementById("fog-avg-pm25").textContent = s.fog_avg_pm25.toFixed(1) + " µg/m³";
-    document.getElementById("fog-avg-nox").textContent  = s.fog_avg_nox.toFixed(1);
-    document.getElementById("fog-affected").textContent = s.fog_affected_areas.length ? s.fog_affected_areas.join(", ") : "None";
-    document.getElementById("fog-updated").textContent  = s.fog_updated;
+    // Resource badges (NEW)
+    renderResourceBadges(area, a.resource_assignment);
 
-    // Cloud panel
-    const cp = document.getElementById("cloud-policy");
-    cp.textContent = s.cloud_policy;
-    cp.className   = "mv " + polClass(s.cloud_policy);
-    document.getElementById("cloud-limit").textContent    = s.cloud_pm25_limit + " µg/m³";
-    document.getElementById("cloud-total").textContent    = s.cloud_total_msg;
-    document.getElementById("cloud-reduces").textContent  = s.cloud_reduces;
-    document.getElementById("cloud-normals").textContent  = s.cloud_normals;
-    document.getElementById("cloud-closures").textContent = s.cloud_emergencies;
-    document.getElementById("cloud-hotspots").textContent = s.cloud_hotspots;
+    // Mini chart update (NEW)
+    pushMiniPoint(area, a.pm25);
+  });
 
-    // Log
-    document.getElementById("log-container").innerHTML = logs.map(e => `
-      <div class="log-line">
-        <span class="log-time">${e.time}</span>
-        <span class="log-tag tag-${e.layer}">[${e.layer}]</span>
-        <span class="log-${e.level}">${e.msg}</span>
-      </div>`).join("");
-  }
+  // District chart update (NEW)
+  pushDistrictPoint(s.areas);
 
-  const socket = io();
-  socket.on("update", data => updateDashboard(data));
-  fetch("/api/state").then(r => r.json()).then(data => updateDashboard(data));
+  // Fog panel
+  const fl = document.getElementById("fog-hotspot-level");
+  fl.textContent = s.fog_hotspot_level;
+  fl.style.color = s.fog_hotspot ? sevColor(s.fog_hotspot_level) : "#6b7280";
+  document.getElementById("fog-command").textContent  = s.fog_command;
+  document.getElementById("fog-avg-pm25").textContent = s.fog_avg_pm25.toFixed(1) + " µg/m³";
+  document.getElementById("fog-avg-nox").textContent  = s.fog_avg_nox.toFixed(1);
+  document.getElementById("fog-affected").textContent = s.fog_affected_areas.length ? s.fog_affected_areas.join(", ") : "None";
+  document.getElementById("fog-updated").textContent  = s.fog_updated;
+
+  // Cloud panel
+  const cp = document.getElementById("cloud-policy");
+  cp.textContent = s.cloud_policy;
+  cp.className   = "mv " + polClass(s.cloud_policy);
+  document.getElementById("cloud-limit").textContent    = s.cloud_pm25_limit + " µg/m³";
+  document.getElementById("cloud-total").textContent    = s.cloud_total_msg;
+  document.getElementById("cloud-reduces").textContent  = s.cloud_reduces;
+  document.getElementById("cloud-normals").textContent  = s.cloud_normals;
+  document.getElementById("cloud-closures").textContent = s.cloud_emergencies;
+  document.getElementById("cloud-hotspots").textContent = s.cloud_hotspots;
+
+  // Log
+  document.getElementById("log-container").innerHTML = logs.map(e => `
+    <div class="log-line">
+      <span class="log-time">${e.time}</span>
+      <span class="log-tag tag-${e.layer}">[${e.layer}]</span>
+      <span class="log-${e.level}">${e.msg}</span>
+    </div>`).join("");
+}
+
+// ── Socket.IO ─────────────────────────────────────────────
+const socket = io();
+socket.on("update", data => updateDashboard(data));
+fetch("/api/state").then(r => r.json()).then(data => updateDashboard(data));
 </script>
 </body>
 </html>
