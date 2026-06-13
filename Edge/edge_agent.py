@@ -27,11 +27,28 @@ from collections import deque
 #   If "Reduce traffic" keeps failing → escalates threshold.
 # ============================================================
 
-BROKER    = "mqtt"
-PORT      = 1883
-AREAS     = ["Industrial Zone", "Residential Zone", "Green Park"]
-SUB_TOPIC = "city/all"
-PUB_TOPIC = "city/decisions"
+BROKER         = "mqtt"
+PORT           = 1883
+AREAS          = ["Industrial Zone", "Residential Zone", "Green Park"]
+SUB_TOPIC      = "city/all"
+SUB_FOG_CMD    = "city/fog/commands"    # NEW: fog coordination commands
+SUB_CLOUD_POL  = "city/cloud/policy"   # NEW: cloud global policy
+PUB_TOPIC      = "city/decisions"
+
+# ── Global policy received from cloud ────────────────────────
+# Agents adapt their behaviour when cloud broadcasts a new policy
+current_cloud_policy = {
+    "level"        : "NORMAL",
+    "pm25_limit"   : 75.0,
+    "resource_plan": {},
+}
+
+# ── Fog coordination received from fog layer ──────────────────
+current_fog_command = {
+    "command"             : "NORMAL",
+    "affected_areas"      : [],
+    "resource_allocations": {},
+}
 
 # ── Train model ──────────────────────────────────────────────
 print("[EDGE] Loading dataset...")
@@ -73,7 +90,7 @@ class ZoneAgent:
         self.state              = "NORMAL"
         self.memory             = deque(maxlen=10)
         self.decision_history   = deque(maxlen=20)
-        self.action_outcomes    = deque(maxlen=20)   # NEW: outcome tracking
+        self.action_outcomes    = deque(maxlen=20)
         self.consecutive_high   = 0
         self.base_threshold     = 75.0
         self.adaptive_threshold = 75.0
@@ -81,14 +98,20 @@ class ZoneAgent:
         self.total_actions      = 0
         self.goal_violations    = 0
         self.created_at         = datetime.now().strftime("%H:%M:%S")
-        self.last_pm25          = 0.0                # NEW: for learning
+        self.last_pm25          = 0.0
+        self.last_reason        = ""    # NEW: explanation of last decision
+        self.last_decision      = "—"  # NEW: track for learn()
 
-        # ── Resource state (NEW) ──────────────────────────────
+        # ── AGENT GOAL (NEW) ─────────────────────────────────
+        # Explicit goal makes the agentic nature clear
+        self.goal = f"Keep PM2.5 in {zone_name} below safe threshold (75 µg/m³)"
+
+        # ── Resource state ────────────────────────────────────
         self.resources = {
-            "sensors_active"    : 3,      # number of active sensors
-            "reporting_interval": 1,      # seconds between reports
-            "compute_priority"  : "LOW",  # LOW / MEDIUM / HIGH
-            "bandwidth_limit"   : 50,     # % of total bandwidth
+            "sensors_active"    : 3,
+            "reporting_interval": 1,
+            "compute_priority"  : "LOW",
+            "bandwidth_limit"   : 50,
         }
 
     # ── SENSE ─────────────────────────────────────────────────
@@ -127,15 +150,66 @@ class ZoneAgent:
         trend    = self._get_trend()
         severity = self._classify_severity(pm25, visibility)
 
+        # ── Build human-readable reason (NEW) ─────────────────
+        reason_parts = [
+            f"PM2.5={pm25:.1f} µg/m³",
+            f"Trend={trend}",
+            f"Severity={severity}",
+            f"Threshold={self.adaptive_threshold:.1f}",
+        ]
+
         # Agentic override: anticipate danger when trend is rising fast
         if trend == "RISING_FAST" and self.state == "WATCHFUL":
             if severity == "MEDIUM":
                 severity = "HIGH"
+                reason_parts.append("Override: RISING_FAST in WATCHFUL → escalated to HIGH")
+
+        # ── Cloud policy awareness (NEW) ──────────────────────
+        # If cloud set EMERGENCY policy, tighten threshold immediately
+        cloud_level = current_cloud_policy.get("level", "NORMAL")
+        cloud_limit = current_cloud_policy.get("pm25_limit", 75.0)
+        if cloud_level == "EMERGENCY" and self.adaptive_threshold > cloud_limit:
+            self.adaptive_threshold = cloud_limit
+            reason_parts.append(f"Cloud EMERGENCY policy: threshold → {cloud_limit}")
+        elif cloud_level == "ALERT" and self.adaptive_threshold > cloud_limit:
+            self.adaptive_threshold = min(self.adaptive_threshold, cloud_limit)
+            reason_parts.append(f"Cloud ALERT policy: threshold capped at {cloud_limit}")
+
+        # ── Fog command awareness (NEW) ───────────────────────
+        # If fog issued EMERGENCY for this zone, force close road
+        fog_cmd     = current_fog_command.get("command", "NORMAL")
+        fog_areas   = current_fog_command.get("affected_areas", [])
+        fog_alloc   = current_fog_command.get("resource_allocations", {})
+
+        if fog_cmd == "EMERGENCY" and self.name in fog_areas:
+            severity = "CRITICAL"
+            reason_parts.append("Fog EMERGENCY command: forced CRITICAL")
+        elif fog_cmd == "RESTRICT" and self.name in fog_areas:
+            if severity not in ["HIGH", "CRITICAL"]:
+                severity = "HIGH"
+                reason_parts.append("Fog RESTRICT command: escalated to HIGH")
+
+        # Apply fog-allocated resources if available for this zone
+        if self.name in fog_alloc:
+            alloc = fog_alloc[self.name]
+            self.resources["bandwidth_limit"]    = alloc.get("bandwidth",           self.resources["bandwidth_limit"])
+            self.resources["compute_priority"]   = alloc.get("compute_priority",    self.resources["compute_priority"])
+            self.resources["reporting_interval"] = alloc.get("reporting_interval",  self.resources["reporting_interval"])
+            self.resources["sensors_active"]     = alloc.get("sensors_active",      self.resources["sensors_active"])
+            reason_parts.append(f"Fog resource allocation applied: BW={alloc.get('bandwidth','?')}%")
 
         self._update_state(severity)
+
+        # Apply adaptive learning
         self._adapt_threshold()
 
-        # NEW: adapt resources based on severity
+        # Never exceed cloud emergency limit
+        cloud_limit = current_cloud_policy.get("pm25_limit", 75.0)
+        self.adaptive_threshold = min(
+            self.adaptive_threshold,
+            cloud_limit
+        )
+
         self._adapt_resources(severity)
 
         if ml_pred == 1 or severity in ["HIGH", "CRITICAL"]:
@@ -143,6 +217,7 @@ class ZoneAgent:
         else:
             decision = "Normal traffic"
 
+        self.last_reason = " | ".join(reason_parts)
         return severity, decision, confidence, trend
 
     # ── ACT ───────────────────────────────────────────────────
@@ -151,6 +226,8 @@ class ZoneAgent:
         self.decision_history.append(decision)
         if decision != "Normal traffic":
             self.total_actions += 1
+
+        self.last_decision = decision
 
         payload = {
             "district"           : self.name,
@@ -170,7 +247,11 @@ class ZoneAgent:
             "consecutive_high"   : self.consecutive_high,
             "memory_avg"         : round(sum(self.memory)/len(self.memory), 1) if self.memory else 0,
             "goal_violations"    : self.goal_violations,
-            # NEW: resource assignment published with every decision
+            # AGENTIC: explicit goal and reasoning explanation
+            "goal"               : self.goal,
+            "reason"             : self.last_reason,
+            "cloud_policy"       : current_cloud_policy.get("level", "NORMAL"),
+            "fog_command"        : current_fog_command.get("command", "NORMAL"),
             "resource_assignment": {
                 "sensors_active"    : self.resources["sensors_active"],
                 "reporting_interval": self.resources["reporting_interval"],
@@ -186,13 +267,12 @@ class ZoneAgent:
             f"[EDGE | {self.name:18s}] "
             f"PM2.5={reading['pm25']:6.1f} | "
             f"State={self.state:9s} | "
-            f"Trend={trend:12s} | "
             f"Severity={severity:8s} | "
             f"→ {decision} ({confidence}%) | "
-            f"Resources: sensors={self.resources['sensors_active']} "
             f"BW={self.resources['bandwidth_limit']}% "
             f"CPU={self.resources['compute_priority']}"
         )
+        print(f"         Reason: {self.last_reason}")
 
     # ── LEARN ─────────────────────────────────────────────────
     def learn(self, prev_pm25, current_pm25, last_decision):
@@ -321,15 +401,52 @@ def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
         print("[EDGE] Connected to MQTT broker ✅")
         client.subscribe(SUB_TOPIC)
-        print(f"[EDGE] Subscribed to: {SUB_TOPIC}")
-        print("[EDGE] All agents running — sense → reason → act → learn\n")
+        client.subscribe(SUB_FOG_CMD)    # NEW: listen to fog coordination
+        client.subscribe(SUB_CLOUD_POL)  # NEW: listen to cloud policy
+        print(f"[EDGE] Subscribed to: {SUB_TOPIC}, {SUB_FOG_CMD}, {SUB_CLOUD_POL}")
+        print("[EDGE] All agents running — sense → reason → act → learn")
+        print("[EDGE] Feedback loop ACTIVE: Edge ← Fog ← Cloud\n")
     else:
         print(f"[EDGE] Connection failed: {reason_code}")
 
 def on_message(client, userdata, msg):
     try:
         payload = json.loads(msg.payload.decode())
-        zone    = payload.get("district")
+        topic = msg.topic
+
+        # =====================================================
+        # CLOUD → EDGE
+        # =====================================================
+        if topic == SUB_CLOUD_POL:
+
+            global current_cloud_policy
+            current_cloud_policy.update(payload)
+
+            print(
+                f"[EDGE] Cloud Policy Updated → "
+                f"{payload.get('level', 'NORMAL')}"
+            )
+            return
+
+        # =====================================================
+        # FOG → EDGE
+        # =====================================================
+        if topic == SUB_FOG_CMD:
+
+            global current_fog_command
+            current_fog_command.update(payload)
+
+            print(
+                f"[EDGE] Fog Command Updated → "
+                f"{payload.get('command', 'NORMAL')}"
+            )
+            return
+
+        # =====================================================
+        # SENSOR → EDGE
+        # =====================================================
+        zone = payload.get("district")
+
         if zone not in AREAS:
             return
 
@@ -347,6 +464,8 @@ def on_message(client, userdata, msg):
             payload.get("condition", "—")
         )
 
+        prev_dec = agent.last_decision
+
         # ── REASON ──
         severity, decision, confidence, trend = agent.reason(reading)
 
@@ -355,7 +474,12 @@ def on_message(client, userdata, msg):
 
         # ── LEARN (NEW) ──
         if prev_pm25 > 0:
-            agent.learn(prev_pm25, reading["pm25"], decision)
+            prev_dec = agent.last_decision
+            severity, decision, confidence, trend = agent.reason(reading)
+            agent.act(reading, severity, decision, confidence, trend, client)
+
+            if prev_pm25 > 0:
+                agent.learn(prev_pm25, reading["pm25"], prev_dec)
 
         # Save current pm25 for next cycle's learning
         agent.last_pm25 = reading["pm25"]
