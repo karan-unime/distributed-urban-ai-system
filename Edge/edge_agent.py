@@ -29,7 +29,7 @@ from collections import deque
 
 BROKER         = "mqtt"
 PORT           = 1883
-AREAS          = ["Industrial Zone", "Residential Zone", "Green Park"]
+AREAS          = ["Industrial District", "Residential District", "Green District"]
 SUB_TOPIC      = "city/all"
 SUB_FOG_CMD    = "city/fog/commands"    # NEW: fog coordination commands
 SUB_CLOUD_POL  = "city/cloud/policy"   # NEW: cloud global policy
@@ -451,7 +451,9 @@ def on_message(client, userdata, msg):
             return
 
         agent = agents[zone]
+        
         prev_pm25 = agent.last_pm25
+        prev_dec  = agent.last_decision
 
         # ── SENSE ──
         reading = agent.sense(
@@ -464,7 +466,8 @@ def on_message(client, userdata, msg):
             payload.get("condition", "—")
         )
 
-        prev_dec = agent.last_decision
+        prev_pm25 = agent.last_pm25
+        prev_dec  = agent.last_decision
 
         # ── REASON ──
         severity, decision, confidence, trend = agent.reason(reading)
@@ -472,16 +475,11 @@ def on_message(client, userdata, msg):
         # ── ACT ──
         agent.act(reading, severity, decision, confidence, trend, client)
 
-        # ── LEARN (NEW) ──
+        # ── LEARN ──
         if prev_pm25 > 0:
-            prev_dec = agent.last_decision
-            severity, decision, confidence, trend = agent.reason(reading)
-            agent.act(reading, severity, decision, confidence, trend, client)
+            agent.learn(prev_pm25, reading["pm25"], prev_dec)
 
-            if prev_pm25 > 0:
-                agent.learn(prev_pm25, reading["pm25"], prev_dec)
-
-        # Save current pm25 for next cycle's learning
+        # Save for next cycle
         agent.last_pm25 = reading["pm25"]
 
     except Exception as e:

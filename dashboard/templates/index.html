@@ -121,7 +121,7 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
 
 <!-- Header -->
 <div class="header">
-  <div class="header-title">🏙 URBAN DISTRIBUTED SYSTEM — ADMIN PANEL</div>
+  <div class="header-title">URBAN DISTRIBUTED SYSTEM — ADMIN PANEL</div>
   <div class="header-right">
     <div class="live-dot"></div>
     <span style="color:#22c55e">LIVE</span>
@@ -175,87 +175,87 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
 <div class="sec">EDGE LAYER — 3 ZONES</div>
 <div class="grid3">
 
-  <!-- Industrial Zone -->
+  <!-- Industrial District -->
   <div class="area-card">
     <div class="area-header">
       <div class="area-title-block">
-        <div class="area-city"><span>🏭</span><span id="city-Industrial Zone">Jakarta, Indonesia</span></div>
-        <div class="area-zone">Industrial Zone</div>
+        <div class="area-city"><span id="city-Industrial District">Gucheng, Beijing</span></div>
+        <div class="area-zone">Industrial District</div>
       </div>
-      <span class="sev sev-LOW" id="sev-Industrial Zone">LOW</span>
+      <span class="sev sev-LOW" id="sev-Industrial District">LOW</span>
     </div>
     <div class="mrow">
       <span class="mk"><span class="tooltip-wrap">PM2.5<span class="info-icon">ⓘ</span><span class="tip">PM2.5: Tiny air particles (µg/m³). WHO safe limit: 15 µg/m³. Above 75 = unhealthy. Above 150 = hazardous.</span></span></span>
       <span class="mv">
-        <span id="pm25-Industrial Zone">0</span>
-        <span id="trend-Industrial Zone" class="trend-flat">→</span>
+        <span id="pm25-Industrial District">0</span>
+        <span id="trend-Industrial District" class="trend-flat">→</span>
       </span>
     </div>
-    <div class="bar-wrap"><div class="bar-fill" id="bar-Industrial Zone" style="width:0%;background:#22c55e"></div></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous.</span></span></span><span class="mv" id="vis-Industrial Zone">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides. Causes respiratory problems. Secondary pollution signal.</span></span></span><span class="mv" id="nox-Industrial Zone">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion 0-100. Computed from humidity + wind speed.</span></span></span><span class="mv" id="trf-Industrial Zone">—</span></div>
-    <div class="decision-text dec-normal" id="dec-Industrial Zone">—</div>
-    <div class="res-row" id="res-Industrial Zone"></div>
+    <div class="bar-wrap"><div class="bar-fill" id="bar-Industrial District" style="width:0%;background:#22c55e"></div></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous.</span></span></span><span class="mv" id="vis-Industrial District">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides. Causes respiratory problems. Secondary pollution signal.</span></span></span><span class="mv" id="nox-Industrial District">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion 0-100. Derived from CO + NOx vehicle-emission levels.</span></span></span><span class="mv" id="trf-Industrial District">—</span></div>
+    <div class="decision-text dec-normal" id="dec-Industrial District">—</div>
+    <div class="res-row" id="res-Industrial District"></div>
     <div class="mini-chart-wrap">
       <div class="mini-chart-label">PM2.5 History</div>
-      <canvas id="mini-chart-Industrial Zone"></canvas>
+      <canvas id="mini-chart-Industrial District"></canvas>
     </div>
   </div>
 
-  <!-- Residential Zone -->
+  <!-- Residential District -->
   <div class="area-card">
     <div class="area-header">
       <div class="area-title-block">
-        <div class="area-city"><span>🏘</span><span id="city-Residential Zone">Tehran, Iran</span></div>
-        <div class="area-zone">Residential Zone</div>
+        <div class="area-city"><span id="city-Residential District">Dongsi, Beijing</span></div>
+        <div class="area-zone">Residential District</div>
       </div>
-      <span class="sev sev-LOW" id="sev-Residential Zone">LOW</span>
+      <span class="sev sev-LOW" id="sev-Residential District">LOW</span>
     </div>
     <div class="mrow">
       <span class="mk"><span class="tooltip-wrap">PM2.5<span class="info-icon">ⓘ</span><span class="tip">PM2.5: Tiny air particles (µg/m³). WHO safe limit: 15 µg/m³. Above 75 = unhealthy. Above 150 = hazardous.</span></span></span>
       <span class="mv">
-        <span id="pm25-Residential Zone">0</span>
-        <span id="trend-Residential Zone" class="trend-flat">→</span>
+        <span id="pm25-Residential District">0</span>
+        <span id="trend-Residential District" class="trend-flat">→</span>
       </span>
     </div>
-    <div class="bar-wrap"><div class="bar-fill" id="bar-Residential Zone" style="width:0%;background:#22c55e"></div></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous.</span></span></span><span class="mv" id="vis-Residential Zone">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides. Causes respiratory problems. Secondary pollution signal.</span></span></span><span class="mv" id="nox-Residential Zone">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion 0-100. Computed from humidity + wind speed.</span></span></span><span class="mv" id="trf-Residential Zone">—</span></div>
-    <div class="decision-text dec-normal" id="dec-Residential Zone">—</div>
-    <div class="res-row" id="res-Residential Zone"></div>
+    <div class="bar-wrap"><div class="bar-fill" id="bar-Residential District" style="width:0%;background:#22c55e"></div></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous.</span></span></span><span class="mv" id="vis-Residential District">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides. Causes respiratory problems. Secondary pollution signal.</span></span></span><span class="mv" id="nox-Residential District">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion 0-100. Derived from CO + NOx vehicle-emission levels.</span></span></span><span class="mv" id="trf-Residential District">—</span></div>
+    <div class="decision-text dec-normal" id="dec-Residential District">—</div>
+    <div class="res-row" id="res-Residential District"></div>
     <div class="mini-chart-wrap">
       <div class="mini-chart-label">PM2.5 History</div>
-      <canvas id="mini-chart-Residential Zone"></canvas>
+      <canvas id="mini-chart-Residential District"></canvas>
     </div>
   </div>
 
-  <!-- Green Park -->
+  <!-- Green District -->
   <div class="area-card">
     <div class="area-header">
       <div class="area-title-block">
-        <div class="area-city"><span>🌳</span><span id="city-Green Park">Canberra, Australia</span></div>
-        <div class="area-zone">Green Park</div>
+        <div class="area-city"><span id="city-Green District">Dingling, Beijing</span></div>
+        <div class="area-zone">Green District</div>
       </div>
-      <span class="sev sev-LOW" id="sev-Green Park">LOW</span>
+      <span class="sev sev-LOW" id="sev-Green District">LOW</span>
     </div>
     <div class="mrow">
       <span class="mk"><span class="tooltip-wrap">PM2.5<span class="info-icon">ⓘ</span><span class="tip">PM2.5: Tiny air particles (µg/m³). WHO safe limit: 15 µg/m³. Above 75 = unhealthy. Above 150 = hazardous.</span></span></span>
       <span class="mv">
-        <span id="pm25-Green Park">0</span>
-        <span id="trend-Green Park" class="trend-flat">→</span>
+        <span id="pm25-Green District">0</span>
+        <span id="trend-Green District" class="trend-flat">→</span>
       </span>
     </div>
-    <div class="bar-wrap"><div class="bar-fill" id="bar-Green Park" style="width:0%;background:#22c55e"></div></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous.</span></span></span><span class="mv" id="vis-Green Park">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides. Causes respiratory problems. Secondary pollution signal.</span></span></span><span class="mv" id="nox-Green Park">—</span></div>
-    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion 0-100. Computed from humidity + wind speed.</span></span></span><span class="mv" id="trf-Green Park">—</span></div>
-    <div class="decision-text dec-normal" id="dec-Green Park">—</div>
-    <div class="res-row" id="res-Green Park"></div>
+    <div class="bar-wrap"><div class="bar-fill" id="bar-Green District" style="width:0%;background:#22c55e"></div></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Visibility<span class="info-icon">ⓘ</span><span class="tip">How far you can see in km. Below 5km = foggy. Below 2km = dangerous.</span></span></span><span class="mv" id="vis-Green District">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">NOx<span class="info-icon">ⓘ</span><span class="tip">Nitrogen Oxides. Causes respiratory problems. Secondary pollution signal.</span></span></span><span class="mv" id="nox-Green District">—</span></div>
+    <div class="mrow"><span class="mk"><span class="tooltip-wrap">Traffic<span class="info-icon">ⓘ</span><span class="tip">Road congestion 0-100. Derived from CO + NOx vehicle-emission levels.</span></span></span><span class="mv" id="trf-Green District">—</span></div>
+    <div class="decision-text dec-normal" id="dec-Green District">—</div>
+    <div class="res-row" id="res-Green District"></div>
     <div class="mini-chart-wrap">
       <div class="mini-chart-label">PM2.5 History</div>
-      <canvas id="mini-chart-Green Park"></canvas>
+      <canvas id="mini-chart-Green District"></canvas>
     </div>
   </div>
 </div>
@@ -293,14 +293,14 @@ body { background:#0f1117; color:#e0e0e0; font-family:'Courier New',monospace; f
 </div>
 
 <script>
-const AREAS = ["Industrial Zone", "Residential Zone", "Green Park"];
+const AREAS = ["Industrial District", "Residential District", "Green District"];
 const MAX_POINTS = 30;   // how many data points to keep in charts
 
 // ── Chart colours per zone ────────────────────────────────
 const ZONE_COLORS = {
-  "Industrial Zone" : { line:"#fb923c", fill:"rgba(251,146,60,0.12)"  },
-  "Residential Zone": { line:"#60a5fa", fill:"rgba(96,165,250,0.12)"  },
-  "Green Park"      : { line:"#22c55e", fill:"rgba(34,197,94,0.12)"   },
+  "Industrial District" : { line:"#fb923c", fill:"rgba(251,146,60,0.12)"  },
+  "Residential District": { line:"#60a5fa", fill:"rgba(96,165,250,0.12)"  },
+  "Green District"      : { line:"#22c55e", fill:"rgba(34,197,94,0.12)"   },
 };
 
 // ── WHO guideline reference line ──────────────────────────
@@ -309,7 +309,7 @@ const WHO_LIMIT = 75;
 // ── Shared label history (tick counter) ──────────────────
 let tick = 0;
 const districtLabels = [];
-const districtData   = { "Industrial Zone":[], "Residential Zone":[], "Green Park":[] };
+const districtData   = { "Industrial District":[], "Residential District":[], "Green District":[] };
 
 // ── Clock & Uptime ────────────────────────────────────────
 setInterval(() => {

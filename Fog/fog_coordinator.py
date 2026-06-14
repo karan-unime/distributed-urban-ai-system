@@ -25,7 +25,7 @@ from collections import deque
 
 BROKER        = "mqtt"
 PORT          = 1883
-AREAS         = ["Industrial Zone", "Residential Zone", "Green Park"]
+AREAS         = ["Industrial District", "Residential District", "Green District"]
 SUB_DECISIONS = "city/decisions"
 PUB_COMMANDS  = "city/fog/commands"
 PUB_SUMMARY   = "city/fog/summary"

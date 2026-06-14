@@ -29,7 +29,7 @@ SUB_FOG_SUMMARY = "city/fog/summary"
 SUB_DECISIONS   = "city/decisions"
 PUB_POLICY      = "city/cloud/policy"
 
-AREAS = ["Industrial Zone", "Residential Zone", "Green Park"]
+AREAS = ["Industrial District", "Residential District", "Green District"]
 TOTAL_CITY_BANDWIDTH = 300   # total city-wide bandwidth budget (units)
 
 # ── Global city statistics ────────────────────────────────────

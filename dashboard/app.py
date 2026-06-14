@@ -14,7 +14,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 BROKER = "mqtt"
 PORT   = 1883
-AREAS  = ["Industrial Zone", "Residential Zone", "Green Park"]
+AREAS  = ["Industrial District", "Residential District", "Green District"]
 
 state = {
     "cloud_policy"      : "NORMAL",
