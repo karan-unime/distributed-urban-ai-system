@@ -1,0 +1,18 @@
+metric,baseline,agentic
+Train set size,80648.0,80648.0
+Test set size,20163.0,20163.0
+Accuracy %,61.61,100.0
+Precision %,100.0,100.0
+Recall %,0.1,100.0
+F1 Score %,0.21,100.0
+ROC-AUC %,0.0,100.0
+Dangerous detected,8.0,7748.0
+Situations missed,7740.0,0.0
+Road closures,0.0,2956.0
+Hotspot detections,0.0,2184.0
+BW escalations,0.0,7748.0
+BW reductions,0.0,7649.0
+Compute escalations,0.0,7748.0
+Escalation accuracy %,0.0,100.0
+BW units saved,0.0,152980.0
+Learning threshold triggers,0.0,5.0

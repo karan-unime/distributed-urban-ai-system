@@ -2,7 +2,12 @@ import pandas as pd
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    confusion_matrix,
+    roc_auc_score
+)
 from datetime import datetime
 from collections import deque
 
@@ -19,7 +24,7 @@ from collections import deque
 # ============================================================
 
 print("=" * 65)
-print("  THESIS EVALUATION — URBAN DISTRIBUTED AI SYSTEM")
+print("  URBAN DISTRIBUTED AI SYSTEM")
 print("  With Resource Assignment & Coordination Metrics")
 print("=" * 65)
 print(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -27,7 +32,7 @@ print("=" * 65)
 
 # ── Load dataset ─────────────────────────────────────────────
 print("\n[1] Loading dataset...")
-df = pd.read_csv("Edge/processed_weather.csv")
+df = pd.read_csv("processed_weather.csv")
 print(f"    Total rows: {len(df)}")
 print(f"    Action=1 (dangerous): {(df['action']==1).sum()} rows")
 print(f"    Action=0 (normal):    {(df['action']==0).sum()} rows")
@@ -53,7 +58,11 @@ print(f"    Tree depth: {model.get_depth()} levels ✅")
 # ── Evaluate on test set ──────────────────────────────────────
 print("\n[4] Evaluating on TEST SET (unseen data)...")
 y_pred     = model.predict(X_test)
+y_prob     = model.predict_proba(X_test)[:, 1]
+
 test_acc   = accuracy_score(y_test, y_pred)
+auc        = roc_auc_score(y_test, y_prob)
+
 cm         = confusion_matrix(y_test, y_pred)
 tn, fp, fn, tp = cm.ravel()
 
@@ -65,6 +74,15 @@ print(f"    Test accuracy : {test_acc*100:.2f}%")
 print(f"    Precision     : {precision*100:.2f}%")
 print(f"    Recall        : {recall*100:.2f}%")
 print(f"    F1 Score      : {f1*100:.2f}%")
+print(f"    ROC-AUC Score : {auc*100:.2f}%")
+
+print("\n    Confusion Matrix:")
+print(cm)
+
+print(f"\n    True Negative : {tn}")
+print(f"    False Positive: {fp}")
+print(f"    False Negative: {fn}")
+print(f"    True Positive : {tp}")
 
 
 # ── Helpers ───────────────────────────────────────────────────
@@ -244,7 +262,18 @@ for sev in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]:
 
 # ── Full classification report ────────────────────────────────
 print("\n  FULL CLASSIFICATION REPORT:")
-print(classification_report(y_test, y_pred, target_names=["Normal", "Dangerous"]))
+report = classification_report(
+    y_test,
+    y_pred,
+    target_names=["Normal", "Dangerous"],
+    output_dict=True
+)
+
+pd.DataFrame(report).transpose().to_csv(
+    "classification_report.csv"
+)
+
+print("\nClassification report saved to classification_report.csv")
 
 # ── Conclusion ────────────────────────────────────────────────
 improvement = test_acc * 100 - base_acc * 100
@@ -271,6 +300,8 @@ summary = pd.DataFrame([
     {"metric": "Precision %",                 "baseline": round(base_precision*100,2),"agentic": round(precision*100,2)},
     {"metric": "Recall %",                    "baseline": round(base_recall*100,2),  "agentic": round(recall*100,2)},
     {"metric": "F1 Score %",                  "baseline": round(base_f1*100,2),      "agentic": round(f1*100,2)},
+    {"metric": "ROC-AUC %",                   "baseline": 0,                         "agentic": round(auc * 100, 2)
+    },
     {"metric": "Dangerous detected",          "baseline": b_detected,                "agentic": a_detected},
     {"metric": "Situations missed",           "baseline": dangerous_count-b_detected,"agentic": dangerous_count-a_detected},
     {"metric": "Road closures",               "baseline": 0,                         "agentic": agent_closes},

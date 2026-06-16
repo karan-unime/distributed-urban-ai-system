@@ -110,7 +110,7 @@ def get_next_reading(zone):
         "traffic"   : int(row["traffic"]),
         "condition" : str(row["condition"]),
         "city"      : str(row["city"]),
-        "country"   : str(row["country"]),
+        "country"   : "",  # city col already contains "Gucheng, Beijing"
         "timestamp" : f"{int(row['year'])}-{int(row['month']):02d}-{int(row['day']):02d} {int(row['hour']):02d}:00",
     }
 

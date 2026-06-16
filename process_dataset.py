@@ -103,8 +103,8 @@ def main():
             "visibility": [round(v, 2) for v in df["visibility"]],
             "traffic"   : df["traffic"],
             "condition" : df["condition"],
-            "city"      : city,
-            "country"   : "China",
+            "city"      : city,       # e.g. "Gucheng, Beijing"
+            "country"   : "",          # blank — city already includes Beijing
             "year"      : df["year"],
             "month"     : df["month"],
             "day"       : df["day"],

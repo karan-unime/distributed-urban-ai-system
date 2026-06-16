@@ -51,7 +51,17 @@ state = {
             "pm25": 0, "visibility": 10, "traffic": 0, "nox": 0,
             "severity": "LOW", "decision": "—", "prev_pm25": 0, "trend": "→",
             "city": "—", "country": "—", "condition": "—",
-            # NEW: per-area resource state
+            "goal"              : "—",
+            "reason"            : "—",
+            "agent_state"       : "NORMAL",
+            "confidence"        : 0,
+            "adaptive_threshold": 75.0,
+            "memory_avg"        : 0,
+            "consecutive_high"  : 0,
+            "goal_violations"   : 0,
+            "station"           : "—",
+            "cloud_policy_edge" : "NORMAL",
+            "fog_command_edge"  : "NORMAL",
             "resource_assignment": {
                 "sensors_active"    : 3,
                 "reporting_interval": 1,
@@ -95,7 +105,18 @@ def on_message(client, userdata, msg):
             city      = payload.get("city",       "—")
             country   = payload.get("country",    "—")
             condition = payload.get("condition",  "—")
-            resources = payload.get("resource_assignment", {})
+            resources          = payload.get("resource_assignment",  {})
+            goal               = payload.get("goal",               "—")
+            reason             = payload.get("reason",             "—")
+            agent_state        = payload.get("agent_state",        "NORMAL")
+            confidence         = payload.get("confidence",         0)
+            adaptive_threshold = payload.get("adaptive_threshold", 75.0)
+            memory_avg         = payload.get("memory_avg",         0)
+            consecutive_high   = payload.get("consecutive_high",   0)
+            goal_violations    = payload.get("goal_violations",    0)
+            station            = payload.get("station",            "—")
+            cloud_policy_edge  = payload.get("cloud_policy",       "NORMAL")
+            fog_command_edge   = payload.get("fog_command",        "NORMAL")
 
             prev  = state["areas"][area]["pm25"]
             trend = "↑" if pm25 > prev + 1 else ("↓" if pm25 < prev - 1 else "→")
@@ -105,7 +126,18 @@ def on_message(client, userdata, msg):
                 "severity": severity, "decision": decision,
                 "prev_pm25": prev, "trend": trend,
                 "city": city, "country": country, "condition": condition,
-                "resource_assignment": resources,   # NEW
+                "goal"              : goal,
+                "reason"            : reason,
+                "agent_state"       : agent_state,
+                "confidence"        : confidence,
+                "adaptive_threshold": adaptive_threshold,
+                "memory_avg"        : memory_avg,
+                "consecutive_high"  : consecutive_high,
+                "goal_violations"   : goal_violations,
+                "station"           : station,
+                "cloud_policy_edge" : cloud_policy_edge,
+                "fog_command_edge"  : fog_command_edge,
+                "resource_assignment": resources,
             }
             state["cloud_total_msg"] += 1
 
